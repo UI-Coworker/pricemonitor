@@ -125,12 +125,19 @@ class JDScraper(BaseScraper):
         while time.time() < deadline:
             try:
                 current_url = page.url
+
                 if "passport" not in current_url and "login" not in current_url.lower():
-                    await page.wait_for_load_state("networkidle", timeout=10000)
+                    await page.wait_for_load_state("domcontentloaded", timeout=5000)
                     return
+
+                cookies = await page.context.cookies()
+                for c in cookies:
+                    if c["name"] == "thor" and c.get("value"):
+                        await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                        return
             except Exception:
                 pass
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
         raise TimeoutError("扫码登录超时")
 
     async def _parse_cart_items(self, page: Page) -> list[CartItem]:
