@@ -127,7 +127,6 @@ def print_config_summary(config: AppConfig) -> None:
     table.add_row("桌面通知", "开启" if config.notify.desktop.enabled else "关闭")
     table.add_row("邮件通知", "开启" if config.notify.email.enabled else "关闭")
     table.add_row("微信通知", "开启" if config.notify.wechat.enabled else "关闭")
-    table.add_row("登录超时", f"{config.jd.login_timeout} 秒")
 
     console.print(table)
 

@@ -146,11 +146,11 @@ class Database:
         with self._conn() as conn:
             if status:
                 rows = conn.execute(
-                    "SELECT * FROM products WHERE status = ? ORDER BY updated_at DESC",
+                    "SELECT * FROM products WHERE status = ? ORDER BY id ASC",
                     (status,),
                 ).fetchall()
             else:
-                rows = conn.execute("SELECT * FROM products ORDER BY updated_at DESC").fetchall()
+                rows = conn.execute(                    "SELECT * FROM products ORDER BY id ASC").fetchall()
         result: list[Product] = []
         for r in rows:
             product = self._row_to_product(r)
