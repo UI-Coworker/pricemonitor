@@ -16,6 +16,7 @@ from src.scraper.base import BaseScraper, CartItem, LoginResult
 class JDScraper(BaseScraper):
     LOGIN_URL = "https://passport.jd.com/new/login.aspx"
     USER_HOME_URL = "https://home.jd.com/"
+    CART_URL = "https://cart.jd.com/cart.action"
     QR_SELECTORS = [
         "#app > div > div.login-form > div.qrcode-login > div.qrcode-img img",
         ".qrcode-img img",
@@ -133,5 +134,120 @@ class JDScraper(BaseScraper):
         raise TimeoutError("扫码登录超时")
 
     async def _parse_cart_items(self, page: Page) -> list[CartItem]:
-        """解析购物车页面，提取商品信息。下一阶段实现。"""
-        raise NotImplementedError("购物车解析尚未实现")
+        """解析购物车页面，提取商品信息。"""
+        await page.goto(self.CART_URL, wait_until="domcontentloaded", timeout=self.config.monitor.page_timeout * 1000)
+
+        try:
+            await page.wait_for_selector(".item-form", state="visible", timeout=8000)
+        except Exception:
+            try:
+                await page.wait_for_selector("[data-sku]", state="visible", timeout=5000)
+            except Exception:
+                empty_el = await page.query_selector(".cart-empty")
+                if empty_el:
+                    return []
+                await page.wait_for_timeout(3000)
+
+        cart_data = await page.evaluate("""() => {
+            const items = [];
+            const containers = document.querySelectorAll(
+                '.item-form, [data-sku], .item-item, .cart-item'
+            );
+            containers.forEach((el) => {
+                const skuId = el.getAttribute('data-sku') || '';
+                if (!skuId) return;
+
+                const linkEl =
+                    el.querySelector('.item-name a') ||
+                    el.querySelector('.p-name a') ||
+                    el.querySelector('.p-msg a') ||
+                    el.querySelector('a[href*="item.jd.com"]');
+                const name = linkEl ? linkEl.textContent.trim() : '';
+                const rawUrl = linkEl ? linkEl.getAttribute('href') || '' : '';
+                const url = rawUrl.startsWith('//')
+                    ? 'https:' + rawUrl
+                    : rawUrl;
+
+                const imgEl =
+                    el.querySelector('.item-img img') ||
+                    el.querySelector('.p-img img') ||
+                    el.querySelector('img[src*="img"]');
+                const imageUrl =
+                    imgEl?.getAttribute('src') ||
+                    imgEl?.getAttribute('data-src') ||
+                    imgEl?.getAttribute('data-lazy-img') ||
+                    '';
+
+                const priceEl =
+                    el.querySelector('.item-price .price') ||
+                    el.querySelector('.p-price strong') ||
+                    el.querySelector('.p-price span') ||
+                    el.querySelector('.JDPrice') ||
+                    el.querySelector('[class*="price"]');
+                const priceText = priceEl
+                    ? priceEl.textContent.trim().replace(/[^0-9.]/g, '') : '0';
+                const price = parseFloat(priceText) || 0;
+
+                const origEl = el.querySelector('.p-original, .item-origin');
+                let originalPrice = null;
+                if (origEl) {
+                    const origText = origEl.textContent.trim().replace(/[^0-9.]/g, '');
+                    originalPrice = parseFloat(origText) || null;
+                }
+
+                if (name && price > 0) {
+                    items.push({
+                        sku_id: skuId,
+                        name: name,
+                        url: url,
+                        image_url: imageUrl,
+                        price: price,
+                        original_price: originalPrice,
+                    });
+                }
+            });
+            return items;
+        }""")
+
+        return self._normalize_cart_data(cart_data)
+
+    @staticmethod
+    def _normalize_cart_data(raw_items: list[dict]) -> list[CartItem]:
+        """将 JS 提取的原始字典转为 CartItem 列表，过滤无效数据。"""
+        result: list[CartItem] = []
+        for item in raw_items:
+            try:
+                cart_item = CartItem(
+                    sku_id=str(item.get("sku_id", "")).strip(),
+                    name=str(item.get("name", "")).strip(),
+                    url=JDScraper._normalize_product_url(str(item.get("url", ""))),
+                    image_url=str(item.get("image_url", "")).strip(),
+                    price=float(item.get("price", 0.0)),
+                    original_price=float(item.get("original_price", 0.0))
+                    if item.get("original_price") is not None
+                    else None,
+                )
+                if cart_item.sku_id and cart_item.name and cart_item.price > 0:
+                    result.append(cart_item)
+            except (ValueError, TypeError):
+                continue
+        return result
+
+    @staticmethod
+    def _normalize_product_url(url: str) -> str:
+        """补全京东商品链接为 https 完整 URL。"""
+        if not url:
+            return ""
+
+        if url.startswith("//"):
+            url = "https:" + url
+
+        parsed = url.split("?")[0]
+
+        if "item.jd.com" in parsed:
+            return parsed
+
+        if "jd.com" in parsed:
+            return parsed
+
+        return f"https://item.jd.com/{parsed.strip('/')}.html"
