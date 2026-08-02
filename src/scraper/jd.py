@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from playwright.async_api import Page, Response, async_playwright
+from playwright.async_api import Page, async_playwright
 
 if TYPE_CHECKING:
     from src.config import AppConfig
@@ -143,84 +143,56 @@ class JDScraper(BaseScraper):
     async def _parse_cart_items(self, page: Page) -> list[CartItem]:
         """解析购物车页面，提取商品信息。
 
-        策略优先级：
-        1. 拦截购物车 XHR/API 响应中的 JSON 数据
-        2. 从页面 window 全局对象提取
-        3. DOM 解析（适配多种选择器）
+        策略：
+        1. HTML 内嵌 JSON（__NEXT_DATA__ / __PRELOADED_STATE__ / <script> 标签）
+        2. window 全局对象递归探测
+        3. DOM 解析
         """
-        api_cart_items: list[dict] = []
-        all_json_responses: list[dict] = []
-
-        async def capture_response(response: Response) -> None:
-            url = response.url
-            try:
-                body = await response.json()
-                if isinstance(body, dict):
-                    all_json_responses.append(body)
-            except Exception:
-                return
-            if any(
-                keyword in url.lower()
-                for keyword in (
-                    "cart",
-                    "getcart",
-                    "GetCartDetail",
-                    "cartGets",
-                    "getCarts",
-                    "sku",
-                    "item",
-                    "product",
-                    "list",
-                    "functionid",
-                )
-            ):
-                api_cart_items.append(body)
-
-        page.on("response", capture_response)
-
-        try:
-            await page.goto(
-                self.CART_URL,
-                wait_until="domcontentloaded",
-                timeout=self.config.monitor.page_timeout * 1000,
-            )
-
-            await page.wait_for_timeout(6000)
-
-        finally:
-            page.remove_listener("response", capture_response)
-
-        print(f"[DEBUG] 购物车页面 URL: {page.url}")
-        print(f"[DEBUG] 页面标题: {await page.title()}")
-        print(
-            f"[DEBUG] 拦截到 {len(all_json_responses)} 个JSON响应, 其中 {len(api_cart_items)} 个匹配cart/sku关键字"
+        await page.goto(
+            self.CART_URL,
+            wait_until="domcontentloaded",
+            timeout=self.config.monitor.page_timeout * 1000,
         )
-        for i, api_resp in enumerate(all_json_responses):
-            keys = list(api_resp.keys())
-            data_val = api_resp.get("data")
-            if isinstance(data_val, dict):
-                info = str(list(data_val.keys())[:20])
-            elif isinstance(data_val, list):
-                item_info = ""
-                if len(data_val) > 0 and isinstance(data_val[0], dict):
-                    item_info = f" item0_keys={list(data_val[0].keys())[:15]}"
-                info = f"列表({len(data_val)}项){item_info}" if len(data_val) > 0 else "空列表"
-            else:
-                info = str(type(data_val).__name__)
-            print(f"[DEBUG]  响应#{i} keys={keys[:5]} data={info}")
+        await page.wait_for_timeout(6000)
 
-        dom_count = await page.evaluate(
-            "document.querySelectorAll('[data-sku], .item-form, .cart-item').length"
-        )
-        all_div_count = await page.evaluate("document.querySelectorAll('div').length")
-        print(f"[DEBUG] DOM 中匹配 [data-sku]/.item-form/.cart-item 的数量: {dom_count}")
-        print(f"[DEBUG] 页面总 div 数量: {all_div_count}")
+        print(f"[DEBUG] URL={page.url} title={await page.title()}")
 
-        if api_cart_items:
-            extracted = self._extract_from_api(api_cart_items)
-            if extracted:
-                return self._normalize_cart_data(extracted)
+        embedded = await page.evaluate("""() => {
+            const results = [];
 
+            const addIfFound = (source, data) => {
+                if (data) results.push({source: source, len: JSON.stringify(data).length});
+            };
+
+            // 1) <script id="__NEXT_DATA__" type="application/json">
+            const nextEl = document.getElementById('__NEXT_DATA__');
+            if (nextEl && nextEl.textContent) {
+                try { addIfFound('__NEXT_DATA__', JSON.parse(nextEl.textContent)); } catch(e) {}
+            }
+            // 2) window.__PRELOADED_STATE__
+            if (window.__PRELOADED_STATE__) addIfFound('__PRELOADED_STATE__', window.__PRELOADED_STATE__);
+            // 3) window.__NUXT__
+            if (window.__NUXT__) addIfFound('__NUXT__', window.__NUXT__);
+            // 4) Other window globals
+            const globals = ['__INITIAL_STATE__', '__REDUX_STORE__', '__APP_STATE__',
+                             'pageData', '_pageData', 'store', 'state', 'GLOBAL'];
+            for (const name of globals) {
+                if (window[name]) addIfFound(name, window[name]);
+            }
+            // 5) <script type="application/json">
+            document.querySelectorAll('script[type="application/json"]').forEach(s => {
+                if (s.textContent) {
+                    try { addIfFound(s.id || 'json-script', JSON.parse(s.textContent)); } catch(e) {}
+                }
+            });
+            return results;
+        }""")
+
+        print(f"[DEBUG] 嵌入数据源: {len(embedded)}")
+        for s in embedded:
+            print(f"[DEBUG]  {s['source']} size={s['len']}")
+
+        # 策略2: JS 全局对象递归探测
         js_data = await page.evaluate("""() => {
             const checkout = (obj) => {
                 if (!obj || typeof obj !== 'object') return null;
