@@ -141,29 +141,125 @@ class JDScraper(BaseScraper):
         raise TimeoutError("扫码登录超时")
 
     async def _parse_cart_items(self, page: Page) -> list[CartItem]:
-        """解析购物车页面，提取商品信息。"""
+        """解析购物车页面，通过文本 + 商品链接提取商品信息。"""
         await page.goto(
             self.CART_URL,
             wait_until="domcontentloaded",
             timeout=self.config.monitor.page_timeout * 1000,
         )
-        await page.wait_for_timeout(6000)
+        await page.wait_for_timeout(5000)
 
-        print(f"[DEBUG] URL={page.url} title={await page.title()}")
+        # 提取所有 item.jd.com 链接及其周围文本
+        items_raw = await page.evaluate("""() => {
+            const items = [];
+            const links = document.querySelectorAll('a[href*="item.jd.com"]');
+            links.forEach(link => {
+                const href = link.getAttribute('href') || '';
+                const match = href.match(/item\\.jd\\.com\\/(\\d+)\\.html/);
+                if (!match) return;
+                const skuId = match[1];
 
-        # dump 页面文本
-        text = await page.evaluate("document.body.innerText")
-        lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
-        print(f"[DEBUG] 页面文本行数={len(lines)}")
-        for i, line in enumerate(lines[:80]):
-            if any(kw in line for kw in ("¥", "价格", "删", "结算", "数量", "合计")):
-                print(f"[DEBUG]   [{i}] {line[:120]}")
+                // 向上找容器并提取所有文本
+                let container = link.closest('li, tr, [class*="item"], [class*="product"], [class*="good"]');
+                if (!container) {
+                    container = link.parentElement;
+                    while (container && container.children.length < 6) {
+                        container = container.parentElement;
+                    }
+                }
+                const allText = container ? container.innerText : '';
 
-        # 截图保存
-        await page.screenshot(path="data/cart_debug.png")
-        print("[DEBUG] 截图已保存到 data/cart_debug.png")
+                // 提取图片
+                let img = '';
+                const container2 = link.closest('li, tr, [class*="item"], [class*="product"]') || link.parentElement;
+                if (container2) {
+                    const imgEl = container2.querySelector('img');
+                    if (imgEl) {
+                        img = imgEl.getAttribute('src') ||
+                              imgEl.getAttribute('data-src') ||
+                              imgEl.getAttribute('data-lazy-img') || '';
+                    }
+                }
 
-        return []
+                items.push({sku_id: skuId, url: 'https:' + (href.startsWith('//') ? href : '//' + href), img: img, text: allText.slice(0, 500)});
+            });
+            return items;
+        }""")
+
+        return self._parse_cart_text(items_raw)
+
+    @staticmethod
+    def _parse_cart_text(items_raw: list[dict]) -> list[CartItem]:
+        """从商品文本中提取名称和价格。"""
+        import re
+
+        result: list[CartItem] = []
+        for item in items_raw:
+            text: str = item.get("text", "")
+            lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+
+            # 提取价格行: ¥XXXX.X到手价, ¥XXXX.X学生到手价, ¥XXXX, ¥XXXX.X
+            prices: list[float] = []
+            for ln in lines:
+                m = re.search(r"¥\s*([\d]+(?:\.[\d]+)?)", ln)
+                if m:
+                    try:
+                        prices.append(float(m.group(1)))
+                    except ValueError:
+                        pass
+
+            # 验证: 至少有一个价格
+            if not prices:
+                continue
+
+            price = prices[-1] if len(prices) >= 2 else prices[0]
+            original_price = (
+                prices[-2]
+                if len(prices) >= 2 and prices[-2] < price
+                else (None if len(prices) >= 2 else None)
+            )
+
+            # 调整: 通常第一个价格是到手价(低), 第二个是原价(高)
+            if len(prices) >= 2:
+                p_low = min(prices[0], prices[1])
+                p_high = max(prices[0], prices[1])
+                price = p_low
+                original_price = p_high if p_high > p_low else None
+            else:
+                price = prices[0]
+                original_price = None
+
+            # 提取商品名称: 跳过价格行和"删除"行
+            name_lines: list[str] = []
+            skip_keywords = ("删除", "移入关注", "凑单", "领券", "已选", "有货", "自营", "申请价保")
+            for ln in lines:
+                if re.search(r"¥\s*\d", ln):
+                    continue
+                if any(kw in ln for kw in skip_keywords):
+                    continue
+                if len(ln) >= 2 and not ln.startswith("¥"):
+                    name_lines.append(ln)
+
+            name = (
+                name_lines[0]
+                if name_lines
+                else name_lines[1]
+                if len(name_lines) > 1
+                else "未知商品"
+            )
+
+            result.append(
+                CartItem(
+                    sku_id=item["sku_id"],
+                    name=name,
+                    url=item.get("url", ""),
+                    image_url=item.get("img", ""),
+                    price=price,
+                    original_price=original_price,
+                )
+            )
+
+        return result
 
     @staticmethod
     def _search_cart_data(data: dict, sku_keys: tuple[str, ...]) -> list[dict]:
