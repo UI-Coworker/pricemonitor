@@ -201,7 +201,10 @@ class JDScraper(BaseScraper):
             if isinstance(data_val, dict):
                 info = str(list(data_val.keys())[:20])
             elif isinstance(data_val, list):
-                info = f"列表({len(data_val)}项)" if len(data_val) > 0 else "空列表"
+                item_info = ""
+                if len(data_val) > 0 and isinstance(data_val[0], dict):
+                    item_info = f" item0_keys={list(data_val[0].keys())[:15]}"
+                info = f"列表({len(data_val)}项){item_info}" if len(data_val) > 0 else "空列表"
             else:
                 info = str(type(data_val).__name__)
             print(f"[DEBUG]  响应#{i} keys={keys[:5]} data={info}")
