@@ -188,6 +188,17 @@ class JDScraper(BaseScraper):
             print(f"[DEBUG] 其中含 'cart' 关键字的: {len(cart_related)}")
         if api_cart_items:
             print(f"[DEBUG] JSON响应顶层 key: {list(api_cart_items[0].keys())[:10]}")
+            for i, api_resp in enumerate(api_cart_items[:3]):
+                keys = list(api_resp.keys())
+                print(f"[DEBUG]  响应#{i} keys={keys} code={api_resp.get('code')}")
+                data_val = api_resp.get("data")
+                if isinstance(data_val, dict):
+                    data_keys = list(data_val.keys())[:15]
+                    print(f"[DEBUG]    data keys={data_keys}")
+                elif isinstance(data_val, list):
+                    print(f"[DEBUG]    data 是列表，长度={len(data_val)}")
+                elif isinstance(data_val, str):
+                    print(f"[DEBUG]    data 是字符串，长度={len(data_val)}，前100字符={data_val[:100]}")
 
         dom_count = await page.evaluate("document.querySelectorAll('[data-sku], .item-form, .cart-item').length")
         all_div_count = await page.evaluate("document.querySelectorAll('div').length")
