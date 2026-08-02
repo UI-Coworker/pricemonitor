@@ -149,22 +149,32 @@ class JDScraper(BaseScraper):
         3. DOM 解析（适配多种选择器）
         """
         api_cart_items: list[dict] = []
-        all_api_urls: list[str] = []
+        all_json_responses: list[dict] = []
 
         async def capture_response(response: Response) -> None:
             url = response.url
-            all_api_urls.append(url)
+            try:
+                body = await response.json()
+                if isinstance(body, dict):
+                    all_json_responses.append(body)
+            except Exception:
+                return
             if any(
                 keyword in url.lower()
-                for keyword in ("cart", "getcart", "GetCartDetail", "cartGets", "getCarts",
-                                "sku", "item", "product", "price", "list")
+                for keyword in (
+                    "cart",
+                    "getcart",
+                    "GetCartDetail",
+                    "cartGets",
+                    "getCarts",
+                    "sku",
+                    "item",
+                    "product",
+                    "list",
+                    "functionid",
+                )
             ):
-                try:
-                    body = await response.json()
-                    if isinstance(body, dict):
-                        api_cart_items.append(body)
-                except Exception:
-                    pass
+                api_cart_items.append(body)
 
         page.on("response", capture_response)
 
@@ -182,25 +192,23 @@ class JDScraper(BaseScraper):
 
         print(f"[DEBUG] 购物车页面 URL: {page.url}")
         print(f"[DEBUG] 页面标题: {await page.title()}")
-        print(f"[DEBUG] 拦截到 {len(all_api_urls)} 个网络响应, {len(api_cart_items)} 个JSON响应")
-        if all_api_urls:
-            cart_related = [u for u in all_api_urls if "cart" in u.lower()]
-            print(f"[DEBUG] 其中含 'cart' 关键字的: {len(cart_related)}")
-        if api_cart_items:
-            print(f"[DEBUG] JSON响应顶层 key: {list(api_cart_items[0].keys())[:10]}")
-            for i, api_resp in enumerate(api_cart_items[:3]):
-                keys = list(api_resp.keys())
-                print(f"[DEBUG]  响应#{i} keys={keys} code={api_resp.get('code')}")
-                data_val = api_resp.get("data")
-                if isinstance(data_val, dict):
-                    data_keys = list(data_val.keys())[:15]
-                    print(f"[DEBUG]    data keys={data_keys}")
-                elif isinstance(data_val, list):
-                    print(f"[DEBUG]    data 是列表，长度={len(data_val)}")
-                elif isinstance(data_val, str):
-                    print(f"[DEBUG]    data 是字符串，长度={len(data_val)}，前100字符={data_val[:100]}")
+        print(
+            f"[DEBUG] 拦截到 {len(all_json_responses)} 个JSON响应, 其中 {len(api_cart_items)} 个匹配cart/sku关键字"
+        )
+        for i, api_resp in enumerate(all_json_responses):
+            keys = list(api_resp.keys())
+            data_val = api_resp.get("data")
+            if isinstance(data_val, dict):
+                info = str(list(data_val.keys())[:20])
+            elif isinstance(data_val, list):
+                info = f"列表({len(data_val)}项)" if len(data_val) > 0 else "空列表"
+            else:
+                info = str(type(data_val).__name__)
+            print(f"[DEBUG]  响应#{i} keys={keys[:5]} data={info}")
 
-        dom_count = await page.evaluate("document.querySelectorAll('[data-sku], .item-form, .cart-item').length")
+        dom_count = await page.evaluate(
+            "document.querySelectorAll('[data-sku], .item-form, .cart-item').length"
+        )
         all_div_count = await page.evaluate("document.querySelectorAll('div').length")
         print(f"[DEBUG] DOM 中匹配 [data-sku]/.item-form/.cart-item 的数量: {dom_count}")
         print(f"[DEBUG] 页面总 div 数量: {all_div_count}")
