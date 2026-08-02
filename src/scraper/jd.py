@@ -149,19 +149,20 @@ class JDScraper(BaseScraper):
         3. DOM 解析（适配多种选择器）
         """
         api_cart_items: list[dict] = []
-        api_response_sources: list[str] = []
+        all_api_urls: list[str] = []
 
         async def capture_response(response: Response) -> None:
             url = response.url
+            all_api_urls.append(url)
             if any(
                 keyword in url.lower()
-                for keyword in ("cart", "getcart", "GetCartDetail", "cartGets", "getCarts")
+                for keyword in ("cart", "getcart", "GetCartDetail", "cartGets", "getCarts",
+                                "sku", "item", "product", "price", "list")
             ):
                 try:
                     body = await response.json()
                     if isinstance(body, dict):
                         api_cart_items.append(body)
-                        api_response_sources.append(url)
                 except Exception:
                     pass
 
@@ -178,6 +179,20 @@ class JDScraper(BaseScraper):
 
         finally:
             page.remove_listener("response", capture_response)
+
+        print(f"[DEBUG] 购物车页面 URL: {page.url}")
+        print(f"[DEBUG] 页面标题: {await page.title()}")
+        print(f"[DEBUG] 拦截到 {len(all_api_urls)} 个网络响应, {len(api_cart_items)} 个JSON响应")
+        if all_api_urls:
+            cart_related = [u for u in all_api_urls if "cart" in u.lower()]
+            print(f"[DEBUG] 其中含 'cart' 关键字的: {len(cart_related)}")
+        if api_cart_items:
+            print(f"[DEBUG] JSON响应顶层 key: {list(api_cart_items[0].keys())[:10]}")
+
+        dom_count = await page.evaluate("document.querySelectorAll('[data-sku], .item-form, .cart-item').length")
+        all_div_count = await page.evaluate("document.querySelectorAll('div').length")
+        print(f"[DEBUG] DOM 中匹配 [data-sku]/.item-form/.cart-item 的数量: {dom_count}")
+        print(f"[DEBUG] 页面总 div 数量: {all_div_count}")
 
         if api_cart_items:
             extracted = self._extract_from_api(api_cart_items)
