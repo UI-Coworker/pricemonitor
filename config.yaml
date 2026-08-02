@@ -1,0 +1,51 @@
+# PriceMonitor 配置文件
+# 所有选项均可按需修改，注释掉的选项有默认值
+
+# ---------- 京东登录 ----------
+jd:
+  # 浏览器状态数据保存路径（登录 Cookie 等信息）
+  state_file: "data/jd_state.json"
+  # 登录超时时间（秒），超时后需重新扫码
+  login_timeout: 120
+
+# ---------- 监控设置 ----------
+monitor:
+  # 定时检查间隔（分钟）
+  interval_minutes: 30
+  # 页面加载超时（秒）
+  page_timeout: 30
+  # 两次请求之间的随机延迟范围（秒），避免触发反爬
+  request_delay:
+    min: 2
+    max: 5
+
+# ---------- 通知渠道 ----------
+notify:
+  # 桌面通知
+  desktop:
+    enabled: true
+
+  # 邮件通知
+  email:
+    enabled: false
+    smtp_host: "smtp.qq.com"
+    smtp_port: 587
+    sender: ""
+    password: ""   # QQ邮箱需使用授权码，非登录密码
+    receivers:
+      - ""
+
+  # 微信通知（通过 Server酱 / PushPlus）
+  wechat:
+    enabled: false
+    # 推送服务: "serverchan" 或 "pushplus"
+    provider: "pushplus"
+    # PushPlus Token（在 pushplus.plus 获取）
+    pushplus_token: ""
+    # Server酱 SendKey（在 sct.ftqq.com 获取）
+    serverchan_key: ""
+
+# ---------- 价格趋势 ----------
+chart:
+  # history 命令默认显示多少条记录
+  max_points: 30
