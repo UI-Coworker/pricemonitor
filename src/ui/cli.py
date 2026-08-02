@@ -7,6 +7,7 @@ import click
 
 from src.config import load_config
 from src.notifier.dispatcher import NotificationDispatcher
+from src.scheduler import WatchScheduler
 from src.scraper.jd import JDScraper
 from src.storage.db import Database
 from src.ui.display import (
@@ -158,6 +159,27 @@ def check(ctx: click.Context) -> None:
             app_config = load_config(config_path)
             dispatcher = NotificationDispatcher(app_config)
             await dispatcher.send_alerts(alerts)
+
+    asyncio.run(_run())
+
+
+@cli.command()
+@click.pass_context
+def watch(ctx: click.Context) -> None:
+    """启动持续监控，定时检查价格并发送降价通知"""
+    config_path: str = ctx.obj["config_path"]
+    app_config = load_config(config_path)
+    scraper = _get_scraper(config_path)
+    db = _get_db(config_path)
+
+    async def _run() -> None:
+        logged_in = await scraper.check_login()
+        if not logged_in:
+            console.print("[yellow]⚠ 尚未登录，请先执行 [bold]pricemonitor login[/bold][/yellow]")
+            return
+
+        scheduler = WatchScheduler(app_config, scraper, db)
+        await scheduler.start()
 
     asyncio.run(_run())
 
