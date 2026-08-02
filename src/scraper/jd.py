@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from playwright.async_api import Page, async_playwright
+from playwright.async_api import Page, Response, async_playwright
 
 if TYPE_CHECKING:
     from src.config import AppConfig
@@ -141,198 +141,94 @@ class JDScraper(BaseScraper):
         raise TimeoutError("扫码登录超时")
 
     async def _parse_cart_items(self, page: Page) -> list[CartItem]:
-        """解析购物车页面，提取商品信息。
+        """解析购物车页面，提取商品信息。"""
+        captured: list[tuple[str, dict]] = []
 
-        策略：
-        1. HTML 内嵌 JSON（__NEXT_DATA__ / __PRELOADED_STATE__ / <script> 标签）
-        2. window 全局对象递归探测
-        3. DOM 解析
-        """
-        await page.goto(
-            self.CART_URL,
-            wait_until="domcontentloaded",
-            timeout=self.config.monitor.page_timeout * 1000,
-        )
-        await page.wait_for_timeout(6000)
+        async def on_response(response: Response) -> None:
+            try:
+                body = await response.json()
+                if isinstance(body, dict):
+                    captured.append((response.url, body))
+            except Exception:
+                pass
 
-        print(f"[DEBUG] URL={page.url} title={await page.title()}")
-
-        embedded = await page.evaluate("""() => {
-            const results = [];
-
-            const addIfFound = (source, data) => {
-                if (data) results.push({source: source, len: JSON.stringify(data).length});
-            };
-
-            // 1) <script id="__NEXT_DATA__" type="application/json">
-            const nextEl = document.getElementById('__NEXT_DATA__');
-            if (nextEl && nextEl.textContent) {
-                try { addIfFound('__NEXT_DATA__', JSON.parse(nextEl.textContent)); } catch(e) {}
-            }
-            // 2) window.__PRELOADED_STATE__
-            if (window.__PRELOADED_STATE__) addIfFound('__PRELOADED_STATE__', window.__PRELOADED_STATE__);
-            // 3) window.__NUXT__
-            if (window.__NUXT__) addIfFound('__NUXT__', window.__NUXT__);
-            // 4) Other window globals
-            const globals = ['__INITIAL_STATE__', '__REDUX_STORE__', '__APP_STATE__',
-                             'pageData', '_pageData', 'store', 'state', 'GLOBAL'];
-            for (const name of globals) {
-                if (window[name]) addIfFound(name, window[name]);
-            }
-            // 5) <script type="application/json">
-            document.querySelectorAll('script[type="application/json"]').forEach(s => {
-                if (s.textContent) {
-                    try { addIfFound(s.id || 'json-script', JSON.parse(s.textContent)); } catch(e) {}
-                }
-            });
-            return results;
-        }""")
-
-        print(f"[DEBUG] 嵌入数据源: {len(embedded)}")
-        for s in embedded:
-            print(f"[DEBUG]  {s['source']} size={s['len']}")
-
-        # 策略2: JS 全局对象递归探测
-        js_data = await page.evaluate("""() => {
-            const checkout = (obj) => {
-                if (!obj || typeof obj !== 'object') return null;
-                if (Array.isArray(obj) && obj.length > 0) {
-                    const first = obj[0];
-                    if (first && first.skuId) return obj;
-                    if (first && first.sku) return obj;
-                    if (first && first.SkuId) return obj;
-                }
-                for (const key of Object.keys(obj)) {
-                    if (Array.isArray(obj[key]) && obj[key].length > 0) {
-                        const item = obj[key][0];
-                        if (item && typeof item === 'object' &&
-                            (item.skuId || item.sku || item.SkuId ||
-                             item.cartItem || item.itemId)) {
-                            return obj[key];
-                        }
-                    }
-                }
-                return null;
-            };
-            const globals = ['__PRELOADED_STATE__', '__NUXT__', '__REDUX_STORE__',
-                             'pageData', '_pageData', '__INITIAL_STATE__',
-                             '__NEXT_DATA__', '__APP_STATE__'];
-            for (const name of globals) {
-                if (window[name]) {
-                    const data = checkout(window[name]);
-                    if (data) return {source: name, data: data};
-                }
-            }
-            for (const key of Object.keys(window)) {
-                if (key.toLowerCase().includes('cart')) continue;
-                try {
-                    const val = window[key];
-                    const data = checkout(val);
-                    if (data) return {source: key, data: data};
-                } catch(e) {}
-            }
-            return null;
-        }""")
-        if js_data and isinstance(js_data, dict):
-            items = self._extract_from_js_global(js_data)
-            if items:
-                return self._normalize_cart_data(items)
+        page.on("response", on_response)
 
         try:
-            await page.wait_for_selector(".item-form", state="visible", timeout=5000)
-        except Exception:
-            try:
-                await page.wait_for_selector("[data-sku]", state="visible", timeout=5000)
-            except Exception:
-                empty_el = await page.query_selector(".cart-empty")
-                if empty_el:
-                    return []
-                await page.wait_for_timeout(2000)
+            await page.goto(
+                self.CART_URL,
+                wait_until="domcontentloaded",
+                timeout=self.config.monitor.page_timeout * 1000,
+            )
+            await page.wait_for_timeout(6000)
+        finally:
+            page.remove_listener("response", on_response)
 
-        dom_data = await page.evaluate("""() => {
-            const items = [];
-            const containerSelectors = [
-                '.item-form', '[data-sku]:not([data-sku=""])', '.item-item',
-                '.cart-item', '.good-item', '.product-item',
-                '[class*="cart"] [class*="item"]',
-                'li[data-sku]', 'div[data-sku]',
-                '.sku-item', '[id*="product"]',
-            ];
-            let containers = [];
-            for (const sel of containerSelectors) {
-                containers = Array.from(document.querySelectorAll(sel));
-                if (containers.length > 0) break;
-            }
+        print(f"[DEBUG] URL={page.url} title={await page.title()}")
+        print(f"[DEBUG] 共 {len(captured)} 个 JSON 响应")
 
-            if (containers.length === 0) {
-                containers = Array.from(document.querySelectorAll(
-                    'a[href*="item.jd.com"]'
-                )).map(el => el.closest('li, div[class], tr'));
-            }
+        # 查找包含购物车商品数据的响应
+        sku_like_keys = ("skuId", "sku_id", "SkuId", "sku", "itemId", "wareId", "goodsId")
 
-            containers.forEach((el) => {
-                const skuId =
-                    el.getAttribute('data-sku') ||
-                    el.getAttribute('data-id') ||
-                    el.getAttribute('sku') ||
-                    '';
+        for url, body in captured:
+            found = self._search_cart_data(body, sku_like_keys)
+            if found:
+                print(f"[DEBUG] ✓ 找到数据: {url[:120]} keys={list(body.keys())[:8]}")
+                print(f"[DEBUG]   商品数={len(found)}")
+                return self._normalize_cart_data(found)
 
-                const linkEl =
-                    el.querySelector('.item-name a') ||
-                    el.querySelector('.p-name a') ||
-                    el.querySelector('.p-msg a') ||
-                    el.querySelector('a[href*="item.jd.com"]') ||
-                    el.querySelector('a[href*="product"]');
-                const name = linkEl ? linkEl.textContent.trim() : '';
-                const rawUrl = linkEl ? linkEl.getAttribute('href') || '' : '';
-                const url = rawUrl.startsWith('//') ? 'https:' + rawUrl : rawUrl;
+        # 打印所有响应 URL 用作诊断
+        print("[DEBUG] 未找到购物车数据，所有响应 URL:")
+        for url, body in captured:
+            keys = list(body.keys()) if isinstance(body, dict) else []
+            short = url.split("?")[0]
+            print(f"[DEBUG]   {short[:110]}  keys={keys[:5]}")
+        return []
 
-                const imgEl =
-                    el.querySelector('.item-img img') ||
-                    el.querySelector('.p-img img') ||
-                    el.querySelector('img[src*="img"]') ||
-                    el.querySelector('img[src*="cdn"]');
-                const imageUrl =
-                    imgEl?.getAttribute('src') ||
-                    imgEl?.getAttribute('data-src') ||
-                    imgEl?.getAttribute('data-lazy-img') ||
-                    '';
+    @staticmethod
+    def _search_cart_data(data: dict, sku_keys: tuple[str, ...]) -> list[dict]:
 
-                const priceEl =
-                    el.querySelector('.item-price .price') ||
-                    el.querySelector('.p-price strong') ||
-                    el.querySelector('.p-price span') ||
-                    el.querySelector('.JDPrice') ||
-                    el.querySelector('[class*="price"]') ||
-                    el.querySelector('[class*="Price"]');
-                const priceText = priceEl
-                    ? priceEl.textContent.trim().replace(/[^0-9.]/g, '') : '0';
-                const price = parseFloat(priceText) || 0;
+        def has_sku(item: dict) -> bool:
+            return any(item.get(k) for k in sku_keys)
 
-                const origEl = el.querySelector(
-                    '.p-original, .item-origin, [class*="ori"], [class*="origin"], del, .old-price'
-                );
-                let originalPrice = null;
-                if (origEl) {
-                    const origText = origEl.textContent.trim().replace(/[^0-9.]/g, '');
-                    originalPrice = parseFloat(origText) || null;
-                }
+        def try_extract(arr: list) -> list[dict]:
+            result: list[dict] = []
+            for entry in arr:
+                if not isinstance(entry, dict) or not has_sku(entry):
+                    continue
+                sid = next((str(entry.get(k, "")) for k in sku_keys if entry.get(k)), "")
+                pname = entry.get("name") or entry.get("title") or entry.get("goodsName") or entry.get("itemName") or ""
+                price = entry.get("price") or entry.get("jdPrice") or entry.get("realPrice") or 0.0
+                if sid and pname:
+                    try:
+                        price_f = float(price)
+                    except (ValueError, TypeError):
+                        continue
+                    result.append({
+                        "sku_id": sid,
+                        "name": pname,
+                        "url": entry.get("url", "") or f"https://item.jd.com/{sid}.html",
+                        "image_url": entry.get("image", "") or entry.get("img", ""),
+                        "price": price_f,
+                        "original_price": float(entry.get("originalPrice", 0)) if entry.get("originalPrice") else None,
+                    })
+            return result
 
-                if (name && price > 0) {
-                    items.push({
-                        sku_id: skuId,
-                        name: name,
-                        url: url,
-                        image_url: imageUrl,
-                        price: price,
-                        original_price: originalPrice,
-                    });
-                }
-            });
-            return items;
-        }""")
-
-        return self._normalize_cart_data(dom_data)
+        # 直接在顶层 data 数组中寻找
+        for key in (None, "data", "result", "resultData", "Data", "body", "cartData", "cartInfo"):
+            target: object = data if key is None else data.get(key)
+            if isinstance(target, list):
+                items = try_extract(target)
+                if items:
+                    return items
+            if isinstance(target, dict):
+                for sub_k in ("list", "cartList", "skuList", "items", "itemList", "rows", "records", "result"):
+                    sub: object = target.get(sub_k)
+                    if isinstance(sub, list):
+                        items = try_extract(sub)
+                        if items:
+                            return items
+        return []
 
     @staticmethod
     def _extract_from_api(responses: list[dict]) -> list[dict]:
