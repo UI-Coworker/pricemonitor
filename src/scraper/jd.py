@@ -186,6 +186,10 @@ class JDScraper(BaseScraper):
             return items;
         }""")
 
+        print(f"[DEBUG] 找到 {len(items_raw)} 个 item.jd.com 链接")
+        for i, item in enumerate(items_raw):
+            print(f"[DEBUG]  [{i}] sku={item['sku_id']} text={item['text'][:120]}...")
+
         return self._parse_cart_text(items_raw)
 
     @staticmethod
