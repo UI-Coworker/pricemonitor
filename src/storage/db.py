@@ -150,7 +150,7 @@ class Database:
                     (status,),
                 ).fetchall()
             else:
-                rows = conn.execute(                    "SELECT * FROM products ORDER BY id ASC").fetchall()
+                rows = conn.execute("SELECT * FROM products ORDER BY id ASC").fetchall()
         result: list[Product] = []
         for r in rows:
             product = self._row_to_product(r)

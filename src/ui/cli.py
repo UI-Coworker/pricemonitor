@@ -6,6 +6,7 @@ from pathlib import Path
 import click
 
 from src.config import load_config
+from src.notifier.dispatcher import NotificationDispatcher
 from src.scraper.jd import JDScraper
 from src.storage.db import Database
 from src.ui.display import (
@@ -152,6 +153,11 @@ def check(ctx: click.Context) -> None:
         ]
 
         print_price_check_result(products, alerts)
+
+        if alerts:
+            app_config = load_config(config_path)
+            dispatcher = NotificationDispatcher(app_config)
+            await dispatcher.send_alerts(alerts)
 
     asyncio.run(_run())
 
