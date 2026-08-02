@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from playwright.async_api import Page, Response, async_playwright
+from playwright.async_api import Page, async_playwright
 
 if TYPE_CHECKING:
     from src.config import AppConfig
@@ -142,47 +142,27 @@ class JDScraper(BaseScraper):
 
     async def _parse_cart_items(self, page: Page) -> list[CartItem]:
         """解析购物车页面，提取商品信息。"""
-        captured: list[tuple[str, dict]] = []
-
-        async def on_response(response: Response) -> None:
-            try:
-                body = await response.json()
-                if isinstance(body, dict):
-                    captured.append((response.url, body))
-            except Exception:
-                pass
-
-        page.on("response", on_response)
-
-        try:
-            await page.goto(
-                self.CART_URL,
-                wait_until="domcontentloaded",
-                timeout=self.config.monitor.page_timeout * 1000,
-            )
-            await page.wait_for_timeout(6000)
-        finally:
-            page.remove_listener("response", on_response)
+        await page.goto(
+            self.CART_URL,
+            wait_until="domcontentloaded",
+            timeout=self.config.monitor.page_timeout * 1000,
+        )
+        await page.wait_for_timeout(6000)
 
         print(f"[DEBUG] URL={page.url} title={await page.title()}")
-        print(f"[DEBUG] 共 {len(captured)} 个 JSON 响应")
 
-        # 查找包含购物车商品数据的响应
-        sku_like_keys = ("skuId", "sku_id", "SkuId", "sku", "itemId", "wareId", "goodsId")
+        # dump 页面文本
+        text = await page.evaluate("document.body.innerText")
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+        print(f"[DEBUG] 页面文本行数={len(lines)}")
+        for i, line in enumerate(lines[:80]):
+            if any(kw in line for kw in ("¥", "价格", "删", "结算", "数量", "合计")):
+                print(f"[DEBUG]   [{i}] {line[:120]}")
 
-        for url, body in captured:
-            found = self._search_cart_data(body, sku_like_keys)
-            if found:
-                print(f"[DEBUG] ✓ 找到数据: {url[:120]} keys={list(body.keys())[:8]}")
-                print(f"[DEBUG]   商品数={len(found)}")
-                return self._normalize_cart_data(found)
+        # 截图保存
+        await page.screenshot(path="data/cart_debug.png")
+        print("[DEBUG] 截图已保存到 data/cart_debug.png")
 
-        # 打印所有响应 URL 用作诊断
-        print("[DEBUG] 未找到购物车数据，所有响应 URL:")
-        for url, body in captured:
-            keys = list(body.keys()) if isinstance(body, dict) else []
-            short = url.split("?")[0]
-            print(f"[DEBUG]   {short[:110]}  keys={keys[:5]}")
         return []
 
     @staticmethod
@@ -197,21 +177,31 @@ class JDScraper(BaseScraper):
                 if not isinstance(entry, dict) or not has_sku(entry):
                     continue
                 sid = next((str(entry.get(k, "")) for k in sku_keys if entry.get(k)), "")
-                pname = entry.get("name") or entry.get("title") or entry.get("goodsName") or entry.get("itemName") or ""
+                pname = (
+                    entry.get("name")
+                    or entry.get("title")
+                    or entry.get("goodsName")
+                    or entry.get("itemName")
+                    or ""
+                )
                 price = entry.get("price") or entry.get("jdPrice") or entry.get("realPrice") or 0.0
                 if sid and pname:
                     try:
                         price_f = float(price)
                     except (ValueError, TypeError):
                         continue
-                    result.append({
-                        "sku_id": sid,
-                        "name": pname,
-                        "url": entry.get("url", "") or f"https://item.jd.com/{sid}.html",
-                        "image_url": entry.get("image", "") or entry.get("img", ""),
-                        "price": price_f,
-                        "original_price": float(entry.get("originalPrice", 0)) if entry.get("originalPrice") else None,
-                    })
+                    result.append(
+                        {
+                            "sku_id": sid,
+                            "name": pname,
+                            "url": entry.get("url", "") or f"https://item.jd.com/{sid}.html",
+                            "image_url": entry.get("image", "") or entry.get("img", ""),
+                            "price": price_f,
+                            "original_price": float(entry.get("originalPrice", 0))
+                            if entry.get("originalPrice")
+                            else None,
+                        }
+                    )
             return result
 
         # 直接在顶层 data 数组中寻找
@@ -222,7 +212,16 @@ class JDScraper(BaseScraper):
                 if items:
                     return items
             if isinstance(target, dict):
-                for sub_k in ("list", "cartList", "skuList", "items", "itemList", "rows", "records", "result"):
+                for sub_k in (
+                    "list",
+                    "cartList",
+                    "skuList",
+                    "items",
+                    "itemList",
+                    "rows",
+                    "records",
+                    "result",
+                ):
                     sub: object = target.get(sub_k)
                     if isinstance(sub, list):
                         items = try_extract(sub)
