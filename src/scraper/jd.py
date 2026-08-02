@@ -152,28 +152,34 @@ class JDScraper(BaseScraper):
         # 提取所有 item.jd.com 链接及其周围文本
         items_raw = await page.evaluate("""() => {
             const items = [];
+            const seen = new Set();
             const links = document.querySelectorAll('a[href*="item.jd.com"]');
             links.forEach(link => {
                 const href = link.getAttribute('href') || '';
                 const match = href.match(/item\\.jd\\.com\\/(\\d+)\\.html/);
                 if (!match) return;
                 const skuId = match[1];
+                if (seen.has(skuId)) return;
+                seen.add(skuId);
 
-                // 向上找容器并提取所有文本
-                let container = link.closest('li, tr, [class*="item"], [class*="product"], [class*="good"]');
-                if (!container) {
-                    container = link.parentElement;
-                    while (container && container.children.length < 6) {
-                        container = container.parentElement;
-                    }
+                // 向上找包含 ¥ 的祖先容器（价格所在）
+                let el = link.parentElement;
+                let text = '';
+                for (let i = 0; i < 8 && el; i++) {
+                    text = el.innerText || '';
+                    if (text.includes('¥')) break;
+                    el = el.parentElement;
                 }
-                const allText = container ? container.innerText : '';
+                if (!text.includes('¥')) {
+                    // 最后兜底: 取 body 中所有可见文本
+                    text = document.body.innerText;
+                }
 
                 // 提取图片
                 let img = '';
-                const container2 = link.closest('li, tr, [class*="item"], [class*="product"]') || link.parentElement;
-                if (container2) {
-                    const imgEl = container2.querySelector('img');
+                let imgParent = link.closest('li, tr, [class*="item"], [class*="cart"]') || link.parentElement;
+                if (imgParent) {
+                    const imgEl = imgParent.querySelector('img');
                     if (imgEl) {
                         img = imgEl.getAttribute('src') ||
                               imgEl.getAttribute('data-src') ||
@@ -181,14 +187,11 @@ class JDScraper(BaseScraper):
                     }
                 }
 
-                items.push({sku_id: skuId, url: 'https:' + (href.startsWith('//') ? href : '//' + href), img: img, text: allText.slice(0, 500)});
+                const url = 'https:' + (href.startsWith('//') ? href : '//' + href);
+                items.push({sku_id: skuId, url: url, img: img, text: text.slice(0, 800)});
             });
             return items;
         }""")
-
-        print(f"[DEBUG] 找到 {len(items_raw)} 个 item.jd.com 链接")
-        for i, item in enumerate(items_raw):
-            print(f"[DEBUG]  [{i}] sku={item['sku_id']} text={item['text'][:120]}...")
 
         return self._parse_cart_text(items_raw)
 
