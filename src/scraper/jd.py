@@ -199,6 +199,7 @@ class JDScraper(BaseScraper):
     def _parse_cart_text(items_raw: list[dict]) -> list[CartItem]:
         """从商品文本中提取名称和价格。"""
         import re
+        from contextlib import suppress
 
         result: list[CartItem] = []
         for item in items_raw:
@@ -210,23 +211,14 @@ class JDScraper(BaseScraper):
             for ln in lines:
                 m = re.search(r"¥\s*([\d]+(?:\.[\d]+)?)", ln)
                 if m:
-                    try:
+                    with suppress(ValueError):
                         prices.append(float(m.group(1)))
-                    except ValueError:
-                        pass
 
             # 验证: 至少有一个价格
             if not prices:
                 continue
 
-            price = prices[-1] if len(prices) >= 2 else prices[0]
-            original_price = (
-                prices[-2]
-                if len(prices) >= 2 and prices[-2] < price
-                else (None if len(prices) >= 2 else None)
-            )
-
-            # 调整: 通常第一个价格是到手价(低), 第二个是原价(高)
+            # 通常第一个价格是到手价(低), 第二个是原价(高)
             if len(prices) >= 2:
                 p_low = min(prices[0], prices[1])
                 p_high = max(prices[0], prices[1])
@@ -247,13 +239,7 @@ class JDScraper(BaseScraper):
                 if len(ln) >= 2 and not ln.startswith("¥"):
                     name_lines.append(ln)
 
-            name = (
-                name_lines[0]
-                if name_lines
-                else name_lines[1]
-                if len(name_lines) > 1
-                else "未知商品"
-            )
+            name = name_lines[0] if name_lines else "未知商品"
 
             result.append(
                 CartItem(
@@ -267,175 +253,6 @@ class JDScraper(BaseScraper):
             )
 
         return result
-
-    @staticmethod
-    def _search_cart_data(data: dict, sku_keys: tuple[str, ...]) -> list[dict]:
-
-        def has_sku(item: dict) -> bool:
-            return any(item.get(k) for k in sku_keys)
-
-        def try_extract(arr: list) -> list[dict]:
-            result: list[dict] = []
-            for entry in arr:
-                if not isinstance(entry, dict) or not has_sku(entry):
-                    continue
-                sid = next((str(entry.get(k, "")) for k in sku_keys if entry.get(k)), "")
-                pname = (
-                    entry.get("name")
-                    or entry.get("title")
-                    or entry.get("goodsName")
-                    or entry.get("itemName")
-                    or ""
-                )
-                price = entry.get("price") or entry.get("jdPrice") or entry.get("realPrice") or 0.0
-                if sid and pname:
-                    try:
-                        price_f = float(price)
-                    except (ValueError, TypeError):
-                        continue
-                    result.append(
-                        {
-                            "sku_id": sid,
-                            "name": pname,
-                            "url": entry.get("url", "") or f"https://item.jd.com/{sid}.html",
-                            "image_url": entry.get("image", "") or entry.get("img", ""),
-                            "price": price_f,
-                            "original_price": float(entry.get("originalPrice", 0))
-                            if entry.get("originalPrice")
-                            else None,
-                        }
-                    )
-            return result
-
-        # 直接在顶层 data 数组中寻找
-        for key in (None, "data", "result", "resultData", "Data", "body", "cartData", "cartInfo"):
-            target: object = data if key is None else data.get(key)
-            if isinstance(target, list):
-                items = try_extract(target)
-                if items:
-                    return items
-            if isinstance(target, dict):
-                for sub_k in (
-                    "list",
-                    "cartList",
-                    "skuList",
-                    "items",
-                    "itemList",
-                    "rows",
-                    "records",
-                    "result",
-                ):
-                    sub: object = target.get(sub_k)
-                    if isinstance(sub, list):
-                        items = try_extract(sub)
-                        if items:
-                            return items
-        return []
-
-    @staticmethod
-    def _extract_from_api(responses: list[dict]) -> list[dict]:
-        """从捕获的 API 响应中提取购物车数据。"""
-        items: list[dict] = []
-        for resp in responses:
-            flat = str(resp)
-            for key in ("skuList", "cartList", "CartInfo", "cart", "list", "data", "result"):
-                val = resp.get(key)
-                if isinstance(val, list):
-                    for entry in val:
-                        if not isinstance(entry, dict):
-                            continue
-                        sid = entry.get("skuId") or entry.get("sku") or entry.get("SkuId") or ""
-                        pname = (
-                            entry.get("name")
-                            or entry.get("title")
-                            or entry.get("itemName")
-                            or entry.get("goodsName")
-                            or entry.get("Name")
-                            or ""
-                        )
-                        price_val = (
-                            entry.get("price")
-                            or entry.get("jdPrice")
-                            or entry.get("skuPrice")
-                            or entry.get("Price")
-                            or entry.get("realPrice")
-                        )
-                        if sid and pname and price_val is not None:
-                            try:
-                                price = float(price_val)
-                            except (ValueError, TypeError):
-                                continue
-                            items.append(
-                                {
-                                    "sku_id": str(sid),
-                                    "name": str(pname),
-                                    "url": entry.get("url", "") or entry.get("Url", ""),
-                                    "image_url": entry.get("img", "")
-                                    or entry.get("image", "")
-                                    or entry.get("Img", "")
-                                    or "",
-                                    "price": price,
-                                    "original_price": (
-                                        float(entry.get("originalPrice", 0))
-                                        if entry.get("originalPrice")
-                                        else None
-                                    ),
-                                }
-                            )
-                if items:
-                    break
-            if items:
-                break
-            if len(flat) > 50 and "skuId" in flat:
-                pass
-
-        return items
-
-    @staticmethod
-    def _extract_from_js_global(data: dict) -> list[dict]:
-        """从 JS 全局对象中提取购物车数据。"""
-        raw = data.get("data", data)
-        if not isinstance(raw, list):
-            return []
-
-        items: list[dict] = []
-        for entry in raw:
-            if not isinstance(entry, dict):
-                continue
-            sid = entry.get("skuId") or entry.get("sku") or entry.get("SkuId") or ""
-            pname = (
-                entry.get("name")
-                or entry.get("title")
-                or entry.get("itemName")
-                or entry.get("goodsName")
-                or ""
-            )
-            price_val = (
-                entry.get("price")
-                or entry.get("jdPrice")
-                or entry.get("skuPrice")
-                or entry.get("realPrice")
-            )
-            if sid and pname and price_val is not None:
-                try:
-                    price = float(price_val)
-                except (ValueError, TypeError):
-                    continue
-                items.append(
-                    {
-                        "sku_id": str(sid),
-                        "name": str(pname),
-                        "url": entry.get("url", "") or f"https://item.jd.com/{sid}.html",
-                        "image_url": entry.get("img", "") or entry.get("image", "") or "",
-                        "price": price,
-                        "original_price": (
-                            float(entry.get("originalPrice", 0))
-                            if entry.get("originalPrice")
-                            else None
-                        ),
-                    }
-                )
-        return items
 
     @staticmethod
     def _normalize_cart_data(raw_items: list[dict]) -> list[CartItem]:
