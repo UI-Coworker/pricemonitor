@@ -139,9 +139,7 @@ class Database:
 
     def get_product_by_sku(self, sku_id: str) -> Product | None:
         with self._conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM products WHERE sku_id = ?", (sku_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM products WHERE sku_id = ?", (sku_id,)).fetchone()
         return self._row_to_product(row)
 
     def list_products(self, status: str | None = None) -> list[Product]:
@@ -152,9 +150,7 @@ class Database:
                     (status,),
                 ).fetchall()
             else:
-                rows = conn.execute(
-                    "SELECT * FROM products ORDER BY updated_at DESC"
-                ).fetchall()
+                rows = conn.execute("SELECT * FROM products ORDER BY updated_at DESC").fetchall()
         result: list[Product] = []
         for r in rows:
             product = self._row_to_product(r)

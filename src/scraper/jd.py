@@ -135,7 +135,11 @@ class JDScraper(BaseScraper):
 
     async def _parse_cart_items(self, page: Page) -> list[CartItem]:
         """解析购物车页面，提取商品信息。"""
-        await page.goto(self.CART_URL, wait_until="domcontentloaded", timeout=self.config.monitor.page_timeout * 1000)
+        await page.goto(
+            self.CART_URL,
+            wait_until="domcontentloaded",
+            timeout=self.config.monitor.page_timeout * 1000,
+        )
 
         try:
             await page.wait_for_selector(".item-form", state="visible", timeout=8000)

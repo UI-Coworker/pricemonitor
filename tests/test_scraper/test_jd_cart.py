@@ -89,9 +89,30 @@ class TestNormalizeCartData:
 
     def test_sorting_is_preserved(self, scraper: JDScraper) -> None:
         raw = [
-            {"sku_id": "3", "name": "C", "url": "", "image_url": "", "price": 1.0, "original_price": None},
-            {"sku_id": "1", "name": "A", "url": "", "image_url": "", "price": 1.0, "original_price": None},
-            {"sku_id": "2", "name": "B", "url": "", "image_url": "", "price": 1.0, "original_price": None},
+            {
+                "sku_id": "3",
+                "name": "C",
+                "url": "",
+                "image_url": "",
+                "price": 1.0,
+                "original_price": None,
+            },
+            {
+                "sku_id": "1",
+                "name": "A",
+                "url": "",
+                "image_url": "",
+                "price": 1.0,
+                "original_price": None,
+            },
+            {
+                "sku_id": "2",
+                "name": "B",
+                "url": "",
+                "image_url": "",
+                "price": 1.0,
+                "original_price": None,
+            },
         ]
         result = scraper._normalize_cart_data(raw)  # noqa: SLF001
         assert [r.sku_id for r in result] == ["3", "1", "2"]
