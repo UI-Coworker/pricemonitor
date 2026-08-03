@@ -171,19 +171,8 @@ class JDScraper(BaseScraper):
                 }
                 if (!name) return;
 
-                // 价格: 找到商品容器，取其全部文本
-                const itemBox = link.closest('li, tr, [class*="item"], [class*="product"], [class*="good"]');
-                let priceText = itemBox ? itemBox.innerText : '';
-
-                // 如果容器里没有 ¥，往上找 3 层
-                if (!priceText.includes('¥')) {
-                    let el = itemBox ? itemBox.parentElement : link.parentElement;
-                    for (let i = 0; i < 3 && el; i++) {
-                        const t = el.innerText || '';
-                        if (t.includes('¥')) { priceText = t; break; }
-                        el = el.parentElement;
-                    }
-                }
+                // 价格: 只用链接的直接容器文本
+                const priceText = link.parentElement?.innerText || '';
                 // 把名称拼到文本最前面，保证 _parse_cart_text 能匹配到
                 const text = name + '\\n' + priceText;
 
@@ -232,8 +221,17 @@ class JDScraper(BaseScraper):
                     with suppress(ValueError):
                         prices.append(float(m.group(1)))
 
-            # 验证: 至少有一个价格
+            # 验证: 允许无价格的商品（来自购物车但价格暂未解析出）
             if not prices:
+                name = lines[0] if lines else "未知商品"
+                result.append(CartItem(
+                    sku_id=item["sku_id"],
+                    name=name,
+                    url=item.get("url", ""),
+                    image_url=item.get("img", ""),
+                    price=0.0,
+                    original_price=None,
+                ))
                 continue
 
             # 通常第一个价格是到手价(低), 第二个是原价(高)
