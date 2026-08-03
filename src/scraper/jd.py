@@ -203,7 +203,13 @@ class JDScraper(BaseScraper):
             return items;
         }""")
 
-        return self._parse_cart_text(items_raw)
+        print(f"[DEBUG] JS 提取到 {len(items_raw)} 个商品链接")
+        for i, item in enumerate(items_raw):
+            print(f"[DEBUG]  [{i}] sku={item['sku_id']} text={item['text'][:80]}...")
+
+        result = self._parse_cart_text(items_raw)
+        print(f"[DEBUG] _parse_cart_text 返回 {len(result)} 件商品")
+        return result
 
     @staticmethod
     def _parse_cart_text(items_raw: list[dict]) -> list[CartItem]:
