@@ -1,5 +1,5 @@
 <template>
-  <el-container v-if="store.loggedIn">
+  <el-container>
     <el-header class="app-header">
       <div class="header-left">
         <span class="app-title">📊 PriceMonitor</span>
@@ -15,26 +15,7 @@
       <router-view />
     </el-main>
   </el-container>
-  <div v-else>
-    <router-view />
-  </div>
 </template>
-
-<script setup>
-import { computed, onMounted } from "vue";
-import { useRouter } from "vue-router";
-import { useProductStore } from "./stores/products";
-
-const store = useProductStore();
-const router = useRouter();
-
-onMounted(async () => {
-  await store.checkLogin();
-  if (!store.loggedIn) {
-    router.push("/login");
-  }
-});
-</script>
 
 <style>
 body {
