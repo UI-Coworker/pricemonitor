@@ -21,13 +21,14 @@ def print_products_table(products: list[Product]) -> None:
     table = Table(title="监控商品列表", title_style="bold cyan")
     table.add_column("ID", style="dim", width=4)
     table.add_column("商品名称", style="white", max_width=30)
-    table.add_column("现价", justify="right", style="green")
+    table.add_column("现价", justify="right")
     table.add_column("原价", justify="right", style="dim")
     table.add_column("目标价", justify="right", style="yellow")
     table.add_column("状态", width=6)
 
     for p in products:
-        current = f"¥{p.current_price:.2f}"
+        has_discount = p.original_price is not None and p.current_price < p.original_price
+        current = f"[green]¥{p.current_price:.2f}[/green]" if has_discount else f"¥{p.current_price:.2f}"
         original = f"¥{p.original_price:.2f}" if p.original_price else "-"
         target = f"¥{p.target_price:.2f}" if p.target_price else "-"
 
@@ -95,11 +96,12 @@ def print_sync_summary(products: list[Product]) -> None:
 
     table = Table(title="购物车同步结果")
     table.add_column("商品", style="white", max_width=30)
-    table.add_column("现价", justify="right", style="green")
+    table.add_column("现价", justify="right")
     table.add_column("原价", justify="right", style="dim")
 
     for p in products:
-        current = f"¥{p.current_price:.2f}"
+        has_discount = p.original_price is not None and p.current_price < p.original_price
+        current = f"[green]¥{p.current_price:.2f}[/green]" if has_discount else f"¥{p.current_price:.2f}"
         original = f"¥{p.original_price:.2f}" if p.original_price else "-"
         table.add_row(_truncate(p.name, 30), current, original)
 

@@ -241,7 +241,7 @@ class JDScraper(BaseScraper):
                 original_price = max(prices[0], prices[1]) if prices[0] != prices[1] else None
             else:
                 price = prices[0]
-                original_price = None
+                original_price = price
 
             result.append(
                 CartItem(
