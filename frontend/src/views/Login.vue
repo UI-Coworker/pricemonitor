@@ -5,14 +5,13 @@
       <div v-if="autoChecking" style="padding: 40px">
         <p>正在检查登录状态…</p>
       </div>
-      <div v-else-if="qrImage" class="qr-section">
-        <img :src="'data:image/png;base64,' + qrImage" alt="QR Code" class="qr-img" />
-        <p>请用京东 App 扫描二维码</p>
-        <el-button type="primary" :loading="polling" @click="startLogin">刷新二维码</el-button>
-        <p v-if="error" class="error">{{ error }}</p>
+      <div v-else-if="polling">
+        <p style="padding: 20px">请在弹出的浏览器窗口中用京东 App 扫码</p>
+        <el-button type="warning" @click="cancelLogin">取消</el-button>
       </div>
       <div v-else>
-        <el-button type="primary" size="large" @click="startLogin">获取登录二维码</el-button>
+        <el-button type="primary" size="large" @click="startLogin">登录</el-button>
+        <p v-if="error" class="error">{{ error }}</p>
       </div>
     </el-card>
   </div>
@@ -25,7 +24,6 @@ import { useProductStore } from "../stores/products";
 
 const store = useProductStore();
 const router = useRouter();
-const qrImage = ref("");
 const polling = ref(false);
 const error = ref("");
 const autoChecking = ref(true);
@@ -44,23 +42,22 @@ async function startLogin() {
   polling.value = true;
   try {
     const r = await store.initLogin();
-    const data = r.data;
-    if (data.logged_in) {
+    if (r.data.logged_in) {
       store.loggedIn = true;
       router.push("/products");
       return;
     }
-    qrImage.value = data.message;
     pollLogin();
   } catch (e) {
-    error.value = "获取二维码失败: " + (e.response?.data?.detail || e.message);
+    error.value = "启动失败: " + (e.response?.data?.detail || e.message);
     polling.value = false;
   }
 }
 
 async function pollLogin() {
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 180; i++) {
     await new Promise((r) => setTimeout(r, 1000));
+    if (!polling.value) return;
     try {
       const data = await store.pollLogin();
       if (data.logged_in) {
@@ -72,8 +69,13 @@ async function pollLogin() {
       // retry
     }
   }
-  error.value = "登录超时，请刷新二维码重试";
+  error.value = "登录超时，请重试";
   polling.value = false;
+}
+
+function cancelLogin() {
+  polling.value = false;
+  error.value = "";
 }
 </script>
 
@@ -87,12 +89,6 @@ async function pollLogin() {
 .login-card {
   width: 400px;
   text-align: center;
-}
-.qr-img {
-  width: 240px;
-  height: 240px;
-  border: 1px solid #eee;
-  margin: 16px 0;
 }
 .error {
   color: #f56c6c;
