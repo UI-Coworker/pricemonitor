@@ -162,18 +162,23 @@ class JDScraper(BaseScraper):
                 if (seen.has(skuId)) return;
                 seen.add(skuId);
 
-                // 向上找包含 ¥ 的祖先容器（价格所在）
+                // 商品名: 直接从链接文本取
+                const name = link.textContent.trim();
+                if (!name || name.length < 2) return;
+
+                // 价格: 向上走 5 层找包含 ¥ 的祖先
                 let el = link.parentElement;
-                let text = '';
-                for (let i = 0; i < 3 && el; i++) {
-                    text = el.innerText || '';
-                    if (text.includes('¥')) break;
+                let priceText = '';
+                for (let i = 0; i < 5 && el; i++) {
+                    const t = el.innerText || '';
+                    if (t.includes('¥')) {
+                        priceText = t;
+                        break;
+                    }
                     el = el.parentElement;
                 }
-                if (!text.includes('¥')) {
-                    // 最后兜底: 取 body 中所有可见文本
-                    text = document.body.innerText;
-                }
+                // 把名称拼到文本最前面，保证 _parse_cart_text 能匹配到
+                const text = name + '\\n' + priceText;
 
                 // 提取图片
                 let img = '';
@@ -228,18 +233,8 @@ class JDScraper(BaseScraper):
                 price = prices[0]
                 original_price = None
 
-            # 提取商品名称: 跳过价格行和"删除"行
-            name_lines: list[str] = []
-            skip_keywords = ("删除", "移入关注", "凑单", "领券", "已选", "有货", "自营", "申请价保")
-            for ln in lines:
-                if re.search(r"¥\s*\d", ln):
-                    continue
-                if any(kw in ln for kw in skip_keywords):
-                    continue
-                if len(ln) >= 2 and not ln.startswith("¥"):
-                    name_lines.append(ln)
-
-            name = name_lines[0] if name_lines else "未知商品"
+            # 名称已在 JS 中从链接文本提取，放在第一行
+            name = lines[0] if lines else "未知商品"
 
             result.append(
                 CartItem(
