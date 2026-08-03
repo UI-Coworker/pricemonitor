@@ -57,3 +57,7 @@ export function watchStop() {
 export function watchStatus() {
   return api.get("/watch/status");
 }
+
+export function logout() {
+  return api.post("/logout");
+}

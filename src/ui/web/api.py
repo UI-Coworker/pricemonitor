@@ -139,6 +139,18 @@ async def login_status() -> LoginStatusResponse:
     return LoginStatusResponse(logged_in=False, message="等待扫码")
 
 
+@router.post("/logout")
+async def logout() -> dict:
+    import src.ui.web.core as core
+
+    config = get_config()
+    state_path = Path(config.jd.state_file)
+    with suppress(FileNotFoundError):
+        state_path.unlink()
+    core._scraper = None
+    return {"ok": True}
+
+
 async def _cleanup_login() -> None:
     global _active_login_page, _active_login_context
     try:

@@ -71,7 +71,8 @@ export const useProductStore = defineStore("products", {
       await this.loadProducts();
     },
 
-    logout() {
+    async logout() {
+      await api.logout();
       this.loggedIn = false;
       this.products = [];
     },

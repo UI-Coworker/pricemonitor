@@ -28,8 +28,8 @@ import { useProductStore } from "./stores/products";
 const store = useProductStore();
 const router = useRouter();
 
-function doLogout() {
-  store.logout();
+async function doLogout() {
+  await store.logout();
   router.push("/login");
 }
 
