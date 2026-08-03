@@ -163,8 +163,13 @@ class JDScraper(BaseScraper):
                 seen.add(skuId);
 
                 // 商品名: 直接从链接文本取
-                const name = link.textContent.trim();
-                if (!name || name.length < 2) return;
+                let name = link.textContent.trim();
+                if (!name) {
+                    // 链接可能只有图片没有文字，从父容器取
+                    const parent = link.parentElement;
+                    if (parent) name = parent.textContent.trim().split('\\n')[0];
+                }
+                if (!name) return;
 
                 // 价格: 向上走 5 层找包含 ¥ 的祖先
                 let el = link.parentElement;
