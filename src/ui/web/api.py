@@ -78,16 +78,25 @@ async def login_start() -> LoginStatusResponse:
 
     if state_path.exists():
         scraper = get_scraper()
-        if await scraper.check_login():
+        logged = await scraper.check_login()
+        if logged:
+            _active_login_context = None
+            _active_login_page = None
             return LoginStatusResponse(logged_in=True, message="已登录")
 
     play = await async_playwright().start()
-    browser = await play.chromium.launch(headless=True)
-    ctx = await browser.new_context(viewport={"width": 1280, "height": 800}, locale="zh-CN")
+    browser = await play.chromium.launch(
+        headless=True,
+        args=["--headless=new", "--hide-crash-restore-bubble"],
+    )
+    ctx = await browser.new_context(
+        viewport={"width": 400, "height": 500},
+        locale="zh-CN",
+    )
     page = await ctx.new_page()
 
     await page.goto("https://passport.jd.com/new/login.aspx", wait_until="domcontentloaded")
-    await page.wait_for_timeout(3000)
+    await page.wait_for_timeout(4000)
 
     screenshot_bytes = await page.screenshot(full_page=False)
 
