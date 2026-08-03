@@ -141,7 +141,7 @@ class JDScraper(BaseScraper):
         raise TimeoutError("扫码登录超时")
 
     async def _parse_cart_items(self, page: Page) -> list[CartItem]:
-        """解析购物车页面，通过文本 + 商品链接提取商品信息。"""
+        """解析购物车页面，通过页面文本'删除'分隔符 + 商品链接匹配提取。"""
         await page.goto(
             self.CART_URL,
             wait_until="domcontentloaded",
@@ -149,66 +149,67 @@ class JDScraper(BaseScraper):
         )
         await page.wait_for_timeout(5000)
 
-        # 提取所有 item.jd.com 链接及其周围文本
         items_raw = await page.evaluate("""() => {
-            const items = [];
+            // 1) 用 '删除' / '移入关注' 把整页文本切成小节
+            const fullText = document.body.innerText;
+            const blocks = fullText.split(/删除|移入关注/).map(b => b.trim()).filter(b => b.length > 5);
+
+            // 2) 提取所有 item.jd.com 链接
+            const links = [];
             const seen = new Set();
-            const links = document.querySelectorAll('a[href*="item.jd.com"]');
-            links.forEach(link => {
+            document.querySelectorAll('a[href*="item.jd.com"]').forEach(link => {
                 const href = link.getAttribute('href') || '';
-                const match = href.match(/item\\.jd\\.com\\/(\\d+)\\.html/);
-                if (!match) return;
-                const skuId = match[1];
+                const m = href.match(/item\\.jd\\.com\\/(\\d+)\\.html/);
+                if (!m) return;
+                const skuId = m[1];
                 if (seen.has(skuId)) return;
                 seen.add(skuId);
 
-                // 商品名: 直接从链接文本取
                 let name = link.textContent.trim();
                 if (!name) {
-                    const parent = link.parentElement;
-                    if (parent) name = parent.textContent.trim().split('\\n')[0];
+                    const p = link.parentElement;
+                    if (p) name = p.textContent.trim().split('\\n')[0];
                 }
                 if (!name) return;
 
-                // 价格: 往上找到含 ¥ 的祖先，用 TreeWalker 精确提取 ¥ 文本
-                let container = link.parentElement;
-                for (let i = 0; i < 8 && container; i++) {
-                    const t = container.innerText || '';
-                    if (t.includes('¥') && t.includes(name)) break;
-                    container = container.parentElement;
-                }
-                let priceText = '';
-                if (container && container.innerText.includes('¥')) {
-                    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-                    const nodes = [];
-                    let n;
-                    while (n = walker.nextNode()) {
-                        const t = n.textContent.trim();
-                        if (t.includes('¥')) nodes.push(t);
-                    }
-                    priceText = nodes.join('\\n');
-                }
-
-                // No ¥ found? try container innerText
-                if (!priceText) priceText = container?.innerText || '';
-
-                const text = name + '\\n' + priceText;
-
-                // 提取图片
                 let img = '';
-                let imgParent = link.closest('li, tr, [class*="item"], [class*="cart"]') || link.parentElement;
-                if (imgParent) {
-                    const imgEl = imgParent.querySelector('img');
-                    if (imgEl) {
-                        img = imgEl.getAttribute('src') ||
-                              imgEl.getAttribute('data-src') ||
-                              imgEl.getAttribute('data-lazy-img') || '';
-                    }
+                const box = link.closest('li, tr, [class*="item"], [class*="cart"]') || link.parentElement;
+                if (box) {
+                    const imgEl = box.querySelector('img');
+                    if (imgEl) img = imgEl.getAttribute('src') || imgEl.getAttribute('data-src') || imgEl.getAttribute('data-lazy-img') || '';
                 }
 
                 const url = 'https:' + (href.startsWith('//') ? href : '//' + href);
-                items.push({sku_id: skuId, url: url, img: img, text: text.slice(0, 800)});
+                links.push({sku_id: skuId, name: name, url: url, img: img});
             });
+
+            // 3) 匹配：每个链接找包含其名称的文本块
+            const used = new Set();
+            const items = [];
+            for (const link of links) {
+                let block = '';
+                for (let i = 0; i < blocks.length; i++) {
+                    if (used.has(i)) continue;
+                    if (blocks[i].includes(link.name.slice(0, 4))) {
+                        block = blocks[i];
+                        used.add(i);
+                        break;
+                    }
+                }
+                // 兜底: 取第一个未用的块
+                if (!block) {
+                    for (let i = 0; i < blocks.length; i++) {
+                        if (!used.has(i)) { block = blocks[i]; used.add(i); break; }
+                    }
+                }
+                items.push({
+                    sku_id: link.sku_id,
+                    url: link.url,
+                    img: link.img,
+                    name: link.name,
+                    text: block,
+                });
+            }
             return items;
         }""")
 
@@ -216,16 +217,19 @@ class JDScraper(BaseScraper):
 
     @staticmethod
     def _parse_cart_text(items_raw: list[dict]) -> list[CartItem]:
-        """从商品文本中提取名称和价格。"""
+        """从页面文本块中提取价格。"""
         import re
         from contextlib import suppress
 
         result: list[CartItem] = []
         for item in items_raw:
+            name = item.get("name", "")
+            if not name:
+                continue
+
             text: str = item.get("text", "")
             lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
 
-            # 提取价格行: ¥XXXX.X到手价, ¥XXXX.X学生到手价, ¥XXXX, ¥XXXX.X
             prices: list[float] = []
             for ln in lines:
                 m = re.search(r"¥\s*([\d]+(?:\.[\d]+)?)", ln)
@@ -233,31 +237,15 @@ class JDScraper(BaseScraper):
                     with suppress(ValueError):
                         prices.append(float(m.group(1)))
 
-            # 验证: 允许无价格的商品（来自购物车但价格暂未解析出）
             if not prices:
-                name = lines[0] if lines else "未知商品"
-                result.append(CartItem(
-                    sku_id=item["sku_id"],
-                    name=name,
-                    url=item.get("url", ""),
-                    image_url=item.get("img", ""),
-                    price=0.0,
-                    original_price=None,
-                ))
-                continue
-
-            # 通常第一个价格是到手价(低), 第二个是原价(高)
-            if len(prices) >= 2:
-                p_low = min(prices[0], prices[1])
-                p_high = max(prices[0], prices[1])
-                price = p_low
-                original_price = p_high if p_high > p_low else None
+                price = 0.0
+                original_price = None
+            elif len(prices) >= 2:
+                price = min(prices[0], prices[1])
+                original_price = max(prices[0], prices[1]) if prices[0] != prices[1] else None
             else:
                 price = prices[0]
                 original_price = None
-
-            # 名称已在 JS 中从链接文本提取，放在第一行
-            name = lines[0] if lines else "未知商品"
 
             result.append(
                 CartItem(
