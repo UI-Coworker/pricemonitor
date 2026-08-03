@@ -2,7 +2,10 @@
   <div class="login-container">
     <el-card class="login-card">
       <h2>扫码登录京东</h2>
-      <div v-if="qrImage" class="qr-section">
+      <div v-if="autoChecking" style="padding: 40px">
+        <p>正在检查登录状态…</p>
+      </div>
+      <div v-else-if="qrImage" class="qr-section">
         <img :src="'data:image/png;base64,' + qrImage" alt="QR Code" class="qr-img" />
         <p>请用京东 App 扫描二维码</p>
         <el-button type="primary" :loading="polling" @click="startLogin">刷新二维码</el-button>
@@ -16,7 +19,7 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useProductStore } from "../stores/products";
 
@@ -25,6 +28,16 @@ const router = useRouter();
 const qrImage = ref("");
 const polling = ref(false);
 const error = ref("");
+const autoChecking = ref(true);
+
+onMounted(async () => {
+  await store.checkLogin();
+  if (store.loggedIn) {
+    router.push("/products");
+    return;
+  }
+  autoChecking.value = false;
+});
 
 async function startLogin() {
   error.value = "";
@@ -34,7 +47,7 @@ async function startLogin() {
     const data = r.data;
     if (data.logged_in) {
       store.loggedIn = true;
-      router.push("/dashboard");
+      router.push("/products");
       return;
     }
     qrImage.value = data.message;
@@ -51,7 +64,8 @@ async function pollLogin() {
     try {
       const data = await store.pollLogin();
       if (data.logged_in) {
-        router.push("/dashboard");
+        store.loggedIn = true;
+        router.push("/products");
         return;
       }
     } catch {

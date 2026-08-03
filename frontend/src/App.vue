@@ -1,5 +1,5 @@
 <template>
-  <el-container>
+  <el-container v-if="store.loggedIn">
     <el-header class="app-header">
       <div class="header-left">
         <span class="app-title">📊 PriceMonitor</span>
@@ -15,9 +15,13 @@
       <router-view />
     </el-main>
   </el-container>
+  <div v-else>
+    <router-view />
+  </div>
 </template>
 
 <script setup>
+import { onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useProductStore } from "./stores/products";
 
@@ -28,6 +32,10 @@ function doLogout() {
   store.logout();
   router.push("/login");
 }
+
+onMounted(async () => {
+  await store.checkLogin();
+});
 </script>
 
 <style>
