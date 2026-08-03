@@ -173,7 +173,8 @@ class JDScraper(BaseScraper):
                 // 价格: 往上找到含 ¥ 的祖先，用 TreeWalker 精确提取 ¥ 文本
                 let container = link.parentElement;
                 for (let i = 0; i < 8 && container; i++) {
-                    if (container.innerText.includes('¥')) break;
+                    const t = container.innerText || '';
+                    if (t.includes('¥') && t.includes(name)) break;
                     container = container.parentElement;
                 }
                 let priceText = '';
