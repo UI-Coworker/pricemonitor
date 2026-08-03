@@ -5,7 +5,7 @@ from contextlib import suppress
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from src.ui.web.app import get_config, get_db, get_scraper
+from src.ui.web.core import get_config, get_db, get_scraper
 
 router = APIRouter()
 

@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from playwright.async_api import async_playwright
 from pydantic import BaseModel
 
-from src.ui.web.app import get_config, get_db, get_scraper
+from src.ui.web.core import get_config, get_db, get_scraper
 
 router = APIRouter(prefix="/api", tags=["api"])
 
