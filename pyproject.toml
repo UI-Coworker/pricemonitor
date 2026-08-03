@@ -38,6 +38,7 @@ dependencies = [
 
 [project.scripts]
 pricemonitor = "src.ui.cli:cli"
+pricemonitor-web = "src.ui.web.run:main"
 
 [project.optional-dependencies]
 dev = [

@@ -1,23 +1,19 @@
 from __future__ import annotations
 
-import asyncio
 import gc
 from contextlib import asynccontextmanager
-
-asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
-from pathlib import Path  # noqa: E402
-from typing import TYPE_CHECKING  # noqa: E402
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator  # noqa: E402
+    from collections.abc import AsyncGenerator
 
-from fastapi import FastAPI  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from src.config import AppConfig, load_config  # noqa: E402
-from src.scraper.jd import JDScraper  # noqa: E402
-from src.storage.db import Database  # noqa: E402
+from src.config import AppConfig, load_config
+from src.scraper.jd import JDScraper
+from src.storage.db import Database
 
 
 def _load_app_config() -> AppConfig:
