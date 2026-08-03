@@ -70,5 +70,10 @@ export const useProductStore = defineStore("products", {
       await api.deleteProduct(id);
       await this.loadProducts();
     },
+
+    logout() {
+      this.loggedIn = false;
+      this.products = [];
+    },
   },
 });

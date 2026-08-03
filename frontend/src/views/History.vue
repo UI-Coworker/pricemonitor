@@ -1,6 +1,6 @@
 <template>
   <div>
-    <el-page-header @back="$router.push('/products')">
+    <el-page-header title="返回商品列表" @back="$router.push('/products')">
       <template #content>
         <span>{{ product?.name || '价格走势' }}</span>
       </template>
@@ -12,13 +12,15 @@
       <el-empty v-else description="暂无价格记录" />
 
       <el-table :data="history" stripe size="small" style="margin-top: 16px">
-        <el-table-column prop="price" label="价格" width="100">
+        <el-table-column label="价格" width="100">
           <template #default="{ row }">¥{{ row.price.toFixed(2) }}</template>
         </el-table-column>
         <el-table-column label="原价" width="100">
           <template #default="{ row }">{{ row.original_price ? '¥' + row.original_price.toFixed(2) : '-' }}</template>
         </el-table-column>
-        <el-table-column prop="timestamp" label="时间" min-width="160" />
+        <el-table-column label="记录时间" min-width="160">
+          <template #default="{ row }">{{ row.timestamp }}</template>
+        </el-table-column>
       </el-table>
     </el-card>
   </div>
@@ -65,7 +67,7 @@ function drawChart() {
       labels,
       datasets: [
         {
-          label: "价格",
+          label: "价格走势",
           data: prices,
           borderColor: "#409eff",
           backgroundColor: "rgba(64,158,255,0.1)",
@@ -76,12 +78,8 @@ function drawChart() {
     },
     options: {
       responsive: true,
-      plugins: {
-        legend: { display: false },
-      },
-      scales: {
-        y: { min, max, ticks: { callback: (v) => "¥" + v } },
-      },
+      plugins: { legend: { display: false } },
+      scales: { y: { min, max, ticks: { callback: (v) => "¥" + v } } },
     },
   });
 }
@@ -91,8 +89,5 @@ watch(productId, load);
 </script>
 
 <style scoped>
-.chart-container {
-  width: 100%;
-  max-height: 360px;
-}
+.chart-container { width: 100%; max-height: 360px; }
 </style>
