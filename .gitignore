@@ -48,3 +48,7 @@ browser_state/
 .env.local
 credentials.json
 wechat_config.json
+
+# Frontend
+node_modules/
+package-lock.json
