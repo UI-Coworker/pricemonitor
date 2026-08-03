@@ -150,9 +150,19 @@ class JDScraper(BaseScraper):
         await page.wait_for_timeout(5000)
 
         items_raw = await page.evaluate("""() => {
-            // 1) 用 '删除' / '移入关注' 把整页文本切成小节
+            // 1) 用 '删除' / '移入关注' 切分整页文本，每节提取价格
             const fullText = document.body.innerText;
-            const blocks = fullText.split(/删除|移入关注/).map(b => b.trim()).filter(b => b.length > 5);
+            const blocks = fullText.split(/删除|移入关注/).map(b => b.trim()).filter(b => b.length > 3);
+            const pricePairs = [];
+            for (const block of blocks) {
+                const prices = [];
+                const lines = block.split('\\n');
+                for (const line of lines) {
+                    const m = line.match(/[¥￥]\\s*([\\d]+(?:\\.[\\d]+)?)/);
+                    if (m) prices.push(parseFloat(m[1]));
+                }
+                if (prices.length > 0) pricePairs.push(prices);
+            }
 
             // 2) 提取所有 item.jd.com 链接
             const links = [];
@@ -183,31 +193,17 @@ class JDScraper(BaseScraper):
                 links.push({sku_id: skuId, name: name, url: url, img: img});
             });
 
-            // 3) 匹配：每个链接找包含其名称的文本块
-            const used = new Set();
+            // 3) 按索引配对: link[i] ←→ pricePairs[i]（无价格块则兜底）
             const items = [];
-            for (const link of links) {
-                let block = '';
-                for (let i = 0; i < blocks.length; i++) {
-                    if (used.has(i)) continue;
-                    if (blocks[i].includes(link.name.slice(0, 4))) {
-                        block = blocks[i];
-                        used.add(i);
-                        break;
-                    }
-                }
-                // 兜底: 取第一个未用的块
-                if (!block) {
-                    for (let i = 0; i < blocks.length; i++) {
-                        if (!used.has(i)) { block = blocks[i]; used.add(i); break; }
-                    }
-                }
+            for (let i = 0; i < links.length; i++) {
+                const pps = i < pricePairs.length ? pricePairs[i] : [];
+                const text = pps.map(p => '¥' + p).join('\\n');
                 items.push({
-                    sku_id: link.sku_id,
-                    url: link.url,
-                    img: link.img,
-                    name: link.name,
-                    text: block,
+                    sku_id: links[i].sku_id,
+                    url: links[i].url,
+                    img: links[i].img,
+                    name: links[i].name,
+                    text: text,
                 });
             }
             return items;
