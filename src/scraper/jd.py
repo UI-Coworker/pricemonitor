@@ -171,16 +171,18 @@ class JDScraper(BaseScraper):
                 }
                 if (!name) return;
 
-                // 价格: 向上走 5 层找包含 ¥ 的祖先
-                let el = link.parentElement;
-                let priceText = '';
-                for (let i = 0; i < 5 && el; i++) {
-                    const t = el.innerText || '';
-                    if (t.includes('¥')) {
-                        priceText = t;
-                        break;
+                // 价格: 找到商品容器，取其全部文本
+                const itemBox = link.closest('li, tr, [class*="item"], [class*="product"], [class*="good"]');
+                let priceText = itemBox ? itemBox.innerText : '';
+
+                // 如果容器里没有 ¥，往上找 3 层
+                if (!priceText.includes('¥')) {
+                    let el = itemBox ? itemBox.parentElement : link.parentElement;
+                    for (let i = 0; i < 3 && el; i++) {
+                        const t = el.innerText || '';
+                        if (t.includes('¥')) { priceText = t; break; }
+                        el = el.parentElement;
                     }
-                    el = el.parentElement;
                 }
                 // 把名称拼到文本最前面，保证 _parse_cart_text 能匹配到
                 const text = name + '\\n' + priceText;
