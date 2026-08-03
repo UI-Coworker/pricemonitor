@@ -51,7 +51,6 @@
         </div>
       </template>
       <el-table :data="store.products" stripe v-loading="store.loading">
-        <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="name" label="商品名称" min-width="180" show-overflow-tooltip />
         <el-table-column label="现价" width="100">
           <template #default="{ row }">¥{{ row.current_price.toFixed(2) }}</template>

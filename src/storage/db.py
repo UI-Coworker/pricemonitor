@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -15,7 +16,7 @@ from src.storage.models import PriceRecord, Product
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS products (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              INTEGER PRIMARY KEY,
     sku_id          TEXT    NOT NULL UNIQUE,
     name            TEXT    NOT NULL,
     url             TEXT    DEFAULT '',
@@ -104,15 +105,14 @@ class Database:
                 status = existing["status"]
                 created_at = existing["created_at"]
             else:
-                cursor = conn.execute(
+                product_id = int(time.time() * 1_000_000)
+                conn.execute(
                     """INSERT INTO products
-                       (sku_id, name, url, image_url, current_price, original_price,
+                       (id, sku_id, name, url, image_url, current_price, original_price,
                         status, created_at, updated_at, last_checked_at)
-                       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)""",
-                    (sku_id, name, url, image_url, price, original_price, now, now, now),
+                       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)""",
+                    (product_id, sku_id, name, url, image_url, price, original_price, now, now, now),
                 )
-                product_id = cursor.lastrowid
-                assert product_id is not None
                 target_price = None
                 status = "active"
                 created_at = now
@@ -263,12 +263,14 @@ class Database:
                     )
             else:
                 with self._conn() as conn:
-                    cur = conn.execute(
+                    product_id = int(time.time() * 1_000_000)
+                    conn.execute(
                         """INSERT INTO products
-                           (sku_id, name, url, image_url, current_price, original_price,
+                           (id, sku_id, name, url, image_url, current_price, original_price,
                             status, created_at, updated_at, last_checked_at)
-                           VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)""",
+                           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)""",
                         (
+                            product_id,
                             item.sku_id,
                             item.name,
                             item.url,
@@ -280,9 +282,6 @@ class Database:
                             now,
                         ),
                     )
-                raw_id = cur.lastrowid
-                assert raw_id is not None
-                product_id = raw_id
 
             self.add_price_record(
                 product_id=product_id,
