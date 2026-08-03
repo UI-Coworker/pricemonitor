@@ -165,15 +165,32 @@ class JDScraper(BaseScraper):
                 // 商品名: 直接从链接文本取
                 let name = link.textContent.trim();
                 if (!name) {
-                    // 链接可能只有图片没有文字，从父容器取
                     const parent = link.parentElement;
                     if (parent) name = parent.textContent.trim().split('\\n')[0];
                 }
                 if (!name) return;
 
-                // 价格: 只用链接的直接容器文本
-                const priceText = link.parentElement?.innerText || '';
-                // 把名称拼到文本最前面，保证 _parse_cart_text 能匹配到
+                // 价格: 往上找到含 ¥ 的祖先，用 TreeWalker 精确提取 ¥ 文本
+                let container = link.parentElement;
+                for (let i = 0; i < 8 && container; i++) {
+                    if (container.innerText.includes('¥')) break;
+                    container = container.parentElement;
+                }
+                let priceText = '';
+                if (container && container.innerText.includes('¥')) {
+                    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+                    const nodes = [];
+                    let n;
+                    while (n = walker.nextNode()) {
+                        const t = n.textContent.trim();
+                        if (t.includes('¥')) nodes.push(t);
+                    }
+                    priceText = nodes.join('\\n');
+                }
+
+                // No ¥ found? try container innerText
+                if (!priceText) priceText = container?.innerText || '';
+
                 const text = name + '\\n' + priceText;
 
                 // 提取图片
@@ -194,13 +211,7 @@ class JDScraper(BaseScraper):
             return items;
         }""")
 
-        print(f"[DEBUG] JS 提取到 {len(items_raw)} 个商品链接")
-        for i, item in enumerate(items_raw):
-            print(f"[DEBUG]  [{i}] sku={item['sku_id']} text={item['text'][:80]}...")
-
-        result = self._parse_cart_text(items_raw)
-        print(f"[DEBUG] _parse_cart_text 返回 {len(result)} 件商品")
-        return result
+        return self._parse_cart_text(items_raw)
 
     @staticmethod
     def _parse_cart_text(items_raw: list[dict]) -> list[CartItem]:
