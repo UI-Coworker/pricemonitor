@@ -1,15 +1,8 @@
 <template>
   <el-container v-if="store.loggedIn">
     <el-header class="app-header">
-      <div class="header-left">
-        <span class="app-title">📊 PriceMonitor</span>
-      </div>
-      <div class="header-right">
-        <el-menu mode="horizontal" :default-active="$route.path" router>
-          <el-menu-item index="/products">商品总览</el-menu-item>
-        </el-menu>
-        <el-button text style="margin-left: 16px" @click="doLogout">退出登录</el-button>
-      </div>
+      <span class="app-title">📊 PriceMonitor</span>
+      <el-button text @click="doLogout">退出登录</el-button>
     </el-header>
     <el-main>
       <router-view />
@@ -46,5 +39,4 @@ body { margin: 0; background: #f5f7fa; }
   padding: 0 24px; height: 60px;
 }
 .app-title { font-size: 20px; font-weight: bold; color: #303133; }
-.header-right { display: flex; align-items: center; }
 </style>

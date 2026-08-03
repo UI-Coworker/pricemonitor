@@ -165,7 +165,7 @@ class JDScraper(BaseScraper):
                 // 向上找包含 ¥ 的祖先容器（价格所在）
                 let el = link.parentElement;
                 let text = '';
-                for (let i = 0; i < 8 && el; i++) {
+                for (let i = 0; i < 3 && el; i++) {
                     text = el.innerText || '';
                     if (text.includes('¥')) break;
                     el = el.parentElement;
