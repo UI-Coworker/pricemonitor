@@ -71,7 +71,7 @@ def sync(ctx: click.Context) -> None:
         items = await scraper.fetch_cart()
 
         if not items:
-            console.print("[dim]购物车为空或解析失败[/dim]")
+            console.print("[dim]购物车为空，请先在京东购物车中添加商品[/dim]")
             return
 
         products = db.sync_from_cart(items)
@@ -144,7 +144,7 @@ def check(ctx: click.Context) -> None:
         items = await scraper.fetch_cart()
 
         if not items:
-            console.print("[dim]购物车为空[/dim]")
+            console.print("[dim]购物车为空，请先在京东购物车中添加商品[/dim]")
             return
 
         products = db.sync_from_cart(items)

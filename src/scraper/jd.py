@@ -149,6 +149,12 @@ class JDScraper(BaseScraper):
         )
         await page.wait_for_timeout(5000)
 
+        # 空购物车检测: 页面包含空购物车提示文案
+        page_text = await page.evaluate("document.body.innerText")
+        empty_markers = ("购物车跑丢了", "购物车还是空的", "购物车是空的", "去购物刷新看看")
+        if any(m in page_text for m in empty_markers):
+            return []
+
         items_raw = await page.evaluate("""() => {
             // 1) 用 '删除' / '移入关注' 切分整页文本，每节提取价格
             const fullText = document.body.innerText;
