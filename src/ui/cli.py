@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 from pathlib import Path
 
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+sys.stdout.reconfigure(encoding="utf-8")
 
 import click
 

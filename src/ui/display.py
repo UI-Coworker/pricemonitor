@@ -28,9 +28,9 @@ def print_products_table(products: list[Product]) -> None:
 
     for p in products:
         has_discount = p.original_price is not None and p.current_price < p.original_price
-        current = f"[green]¥{p.current_price:.2f}[/green]" if has_discount else f"¥{p.current_price:.2f}"
-        original = f"¥{p.original_price:.2f}" if p.original_price else "-"
-        target = f"¥{p.target_price:.2f}" if p.target_price else "-"
+        current = f"[green]￥{p.current_price:.2f}[/green]" if has_discount else f"￥{p.current_price:.2f}"
+        original = f"￥{p.original_price:.2f}" if p.original_price else "-"
+        target = f"￥{p.target_price:.2f}" if p.target_price else "-"
 
         if p.target_price and p.current_price <= p.target_price:
             status = "[bold red]▼ 已降[/bold red]"
@@ -79,7 +79,7 @@ def print_price_chart(records: list[PriceRecord], title: str = "价格走势") -
     date_label = " → ".join(unique_ts[:5])
 
     content = f"""
-[bold]¥{prices[0]:.2f}[/bold] ─ 最新     [dim]¥{min_price:.0f}[/dim] ─ 最低     [dim]¥{max_price:.0f}[/dim] ─ 最高
+[bold]￥{prices[0]:.2f}[/bold] ─ 最新     [dim]￥{min_price:.0f}[/dim] ─ 最低     [dim]￥{max_price:.0f}[/dim] ─ 最高
 
 [bold yellow]{sparkline}[/bold yellow]
 
@@ -101,8 +101,8 @@ def print_sync_summary(products: list[Product]) -> None:
 
     for p in products:
         has_discount = p.original_price is not None and p.current_price < p.original_price
-        current = f"[green]¥{p.current_price:.2f}[/green]" if has_discount else f"¥{p.current_price:.2f}"
-        original = f"¥{p.original_price:.2f}" if p.original_price else "-"
+        current = f"[green]￥{p.current_price:.2f}[/green]" if has_discount else f"￥{p.current_price:.2f}"
+        original = f"￥{p.original_price:.2f}" if p.original_price else "-"
         table.add_row(_truncate(p.name, 30), current, original)
 
     console.print(table)
@@ -149,9 +149,9 @@ def print_price_check_result(products: list[Product], alerts: list[Product]) -> 
             drop = p.target_price - p.current_price
             alert_table.add_row(
                 _truncate(p.name, 25),
-                f"¥{p.current_price:.2f}",
-                f"¥{p.target_price:.2f}",
-                f"-¥{drop:.2f}",
+                f"￥{p.current_price:.2f}",
+                f"￥{p.target_price:.2f}",
+                f"-￥{drop:.2f}",
             )
         console.print(alert_table)
     else:

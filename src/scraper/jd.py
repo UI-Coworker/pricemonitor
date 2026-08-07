@@ -65,14 +65,6 @@ class JDScraper(BaseScraper):
                 print("请在打开的浏览器窗口中用京东 App 扫码登录...")
 
                 await self._wait_for_login_complete(page, timeout=self.config.jd.login_timeout)
-
-                # 访问购物车页 + 直接访问 API 域名强制设置 Cookie
-                await page.goto("https://cart.jd.com/cart.action", wait_until="domcontentloaded")
-                await asyncio.sleep(5)
-                # 尝试访问 API 域名
-                await page.goto("https://api.m.jd.com/", wait_until="domcontentloaded")
-                await asyncio.sleep(2)
-
                 await context.storage_state(path=str(self._state_path))
                 print(f"登录成功，会话已保存至: {self._state_path}")
 
@@ -187,7 +179,7 @@ class JDScraper(BaseScraper):
 
         # 空购物车检测
         page_text = await page.evaluate("document.body.innerText")
-        if "购物车跑丢了" in page_text:
+        if "购物车跑丢了" in page_text and "去购物刷新看看" in page_text:
             # 如果页面有用户名说明已登录(购物车(0) + 用户名), 否则是未登录
             import re
             if re.search(r"购物车\(\d+\)", page_text):
