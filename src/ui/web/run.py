@@ -1,4 +1,7 @@
 import asyncio
+import os
+
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 

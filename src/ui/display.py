@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from src.config import AppConfig
     from src.storage.models import PriceRecord, Product
 
-console = Console()
+console = Console(force_terminal=True)
 
 
 def print_products_table(products: list[Product]) -> None:
