@@ -22,6 +22,10 @@ class LoginResult:
     timestamp: datetime = field(default_factory=datetime.now)
 
 
+class CartSessionExpiredError(Exception):
+    """购物车页面会话已过期，需要重新登录。"""
+
+
 class BaseScraper(ABC):
     @abstractmethod
     async def login(self) -> LoginResult:

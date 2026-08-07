@@ -10,7 +10,7 @@ from playwright.async_api import Page, async_playwright
 if TYPE_CHECKING:
     from src.config import AppConfig
 
-from src.scraper.base import BaseScraper, CartItem, LoginResult
+from src.scraper.base import BaseScraper, CartItem, CartSessionExpiredError, LoginResult
 
 
 class JDScraper(BaseScraper):
@@ -149,10 +149,15 @@ class JDScraper(BaseScraper):
         )
         await page.wait_for_timeout(5000)
 
-        # 空购物车检测: 页面包含空购物车提示文案
+        # 空购物车检测
         page_text = await page.evaluate("document.body.innerText")
-        empty_markers = ("购物车跑丢了", "购物车还是空的", "购物车是空的", "去购物刷新看看")
-        if any(m in page_text for m in empty_markers):
+        if "购物车跑丢了" in page_text:
+            # 如果页面有用户名说明已登录(购物车(0) + 用户名), 否则是未登录
+            import re
+            if re.search(r"购物车\(\d+\)", page_text):
+                return []
+            raise CartSessionExpiredError("登录状态已过期，请重新执行 pricemonitor login")
+        if any(m in page_text for m in ("购物车还是空的", "购物车是空的")):
             return []
 
         items_raw = await page.evaluate("""() => {

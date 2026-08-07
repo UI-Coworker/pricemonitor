@@ -8,6 +8,7 @@ import click
 from src.config import load_config
 from src.notifier.dispatcher import NotificationDispatcher
 from src.scheduler import WatchScheduler
+from src.scraper.base import CartSessionExpiredError
 from src.scraper.jd import JDScraper
 from src.storage.db import Database
 from src.ui.display import (
@@ -64,11 +65,15 @@ def sync(ctx: click.Context) -> None:
     async def _run() -> None:
         logged_in = await scraper.check_login()
         if not logged_in:
-            console.print("[yellow]⚠ 尚未登录，请先执行 [bold]pricemonitor login[/bold][/yellow]")
+            console.print("[yellow]⚠ 尚未登录，请先执行 [bold]pm login[/bold][/yellow]")
             return
 
         console.print("[cyan]正在获取购物车数据...[/cyan]")
-        items = await scraper.fetch_cart()
+        try:
+            items = await scraper.fetch_cart()
+        except CartSessionExpiredError:
+            console.print("[yellow]⚠ 登录已过期，请执行 [bold]pm login[/bold] 重新登录[/yellow]")
+            return
 
         if not items:
             console.print("[dim]购物车为空，请先在京东购物车中添加商品[/dim]")
@@ -141,7 +146,11 @@ def check(ctx: click.Context) -> None:
             return
 
         console.print("[cyan]正在获取购物车最新价格...[/cyan]")
-        items = await scraper.fetch_cart()
+        try:
+            items = await scraper.fetch_cart()
+        except CartSessionExpiredError:
+            console.print("[yellow]⚠ 登录已过期，请执行 [bold]pm login[/bold] 重新登录[/yellow]")
+            return
 
         if not items:
             console.print("[dim]购物车为空，请先在京东购物车中添加商品[/dim]")

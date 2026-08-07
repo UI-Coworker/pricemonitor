@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from playwright.async_api import async_playwright
 from pydantic import BaseModel
 
+from src.scraper.base import CartSessionExpiredError
 from src.ui.web.core import get_config, get_db, get_scraper
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -202,7 +203,10 @@ async def sync_cart() -> SyncResponse:
     if not await scraper.check_login():
         raise HTTPException(status_code=401, detail="未登录")
 
-    items = await scraper.fetch_cart()
+    try:
+        items = await scraper.fetch_cart()
+    except CartSessionExpiredError:
+        raise HTTPException(status_code=401, detail="登录已过期，请重新登录") from None
     if not items:
         return SyncResponse(count=0, products=[])
 
@@ -221,7 +225,10 @@ async def check_prices() -> SyncResponse:
     if not await scraper.check_login():
         raise HTTPException(status_code=401, detail="未登录")
 
-    items = await scraper.fetch_cart()
+    try:
+        items = await scraper.fetch_cart()
+    except CartSessionExpiredError:
+        raise HTTPException(status_code=401, detail="登录已过期，请重新登录") from None
     if not items:
         return SyncResponse(count=0, products=[])
 
