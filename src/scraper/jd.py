@@ -52,6 +52,10 @@ class JDScraper(BaseScraper):
 
                 await self._wait_for_login_complete(page, timeout=self.config.jd.login_timeout)
 
+                # 访问首页让京东设置完整 API 会话 Cookie
+                await page.goto("https://www.jd.com/", wait_until="domcontentloaded")
+                await asyncio.sleep(3)
+
                 await context.storage_state(path=str(self._state_path))
                 print(f"登录成功，会话已保存至: {self._state_path}")
 
