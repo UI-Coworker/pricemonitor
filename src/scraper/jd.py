@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from playwright.async_api import Page, async_playwright
+
+try:
+    from playwright_stealth import stealth_async
+    _HAS_STEALTH = True
+except ImportError:
+    _HAS_STEALTH = False
 
 if TYPE_CHECKING:
     from src.config import AppConfig
@@ -28,6 +35,11 @@ class JDScraper(BaseScraper):
         self.config = config
         self._state_path = Path(config.jd.state_file)
 
+    async def _apply_stealth(self, page: Page) -> None:
+        if _HAS_STEALTH:
+            with suppress(Exception):
+                await stealth_async(page)
+
     async def login(self, headless: bool = False) -> LoginResult:
         """启动浏览器并执行扫码登录流程。
 
@@ -43,6 +55,8 @@ class JDScraper(BaseScraper):
                 locale="zh-CN",
             )
             page = await context.new_page()
+            page = await context.new_page()
+            await self._apply_stealth(page)
 
             try:
                 await page.goto(self.LOGIN_URL, wait_until="domcontentloaded")
@@ -52,9 +66,12 @@ class JDScraper(BaseScraper):
 
                 await self._wait_for_login_complete(page, timeout=self.config.jd.login_timeout)
 
-                # 访问首页让京东设置完整 API 会话 Cookie
-                await page.goto("https://www.jd.com/", wait_until="domcontentloaded")
-                await asyncio.sleep(3)
+                # 访问购物车页 + 直接访问 API 域名强制设置 Cookie
+                await page.goto("https://cart.jd.com/cart.action", wait_until="domcontentloaded")
+                await asyncio.sleep(5)
+                # 尝试访问 API 域名
+                await page.goto("https://api.m.jd.com/", wait_until="domcontentloaded")
+                await asyncio.sleep(2)
 
                 await context.storage_state(path=str(self._state_path))
                 print(f"登录成功，会话已保存至: {self._state_path}")
@@ -80,6 +97,8 @@ class JDScraper(BaseScraper):
                 viewport={"width": 1280, "height": 800},
             )
             page = await context.new_page()
+            page = await context.new_page()
+            await self._apply_stealth(page)
 
             try:
                 await page.goto(self.USER_HOME_URL, wait_until="domcontentloaded", timeout=15000)
@@ -101,12 +120,25 @@ class JDScraper(BaseScraper):
             raise RuntimeError("尚未登录，请先执行 login 命令")
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
             context = await browser.new_context(
                 storage_state=str(self._state_path),
                 viewport={"width": 1280, "height": 800},
+                locale="zh-CN",
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/131.0.0.0 Safari/537.36"
+                ),
             )
             page = await context.new_page()
+            page = await context.new_page()
+            await self._apply_stealth(page)
+            page = await context.new_page()
+            await self._apply_stealth(page)
 
             try:
                 return await self._parse_cart_items(page)
